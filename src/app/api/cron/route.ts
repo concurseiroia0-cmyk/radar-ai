@@ -93,30 +93,46 @@ export async function POST(req: Request) {
 
   for (const asset of assets) {
     try {
-      // ---- 3/4) fetch + upsert 1m ----
-      const candles1m = await fetchCandles(asset.symbol as string, 200);
+      // ---- 3/4) fetch + upsert 1m/5m/15m ----
+      // Histórico profundo: o motor exige >= 60 candles 5m (300 de 1m).
+      // Com ~2000 de 1m temos ~400 de 5m e ~133 de 15m (lookback real).
+      const candles1m = await fetchCandles(asset.symbol as string, 2000);
       if (!candles1m || candles1m.length < 10) {
         summary.errors.push(`${asset.symbol}: sem dados (provedor sem chave ou offline)`);
         continue;
       }
-      const rows = candles1m.map((c) => ({
+      // ---- 5) agregação (antes do upsert — gravamos os 3 timeframes) ----
+      const candles5m = aggregateTo5m(candles1m);
+      const candles15m = aggregateTo15m(candles1m);
+
+      const rows1m = candles1m.map((c) => ({
         asset_id: asset.id,
-        timeframe: "1m" as const,
+        timeframe: "1m",
         ts: c.ts,
         open: c.open,
         high: c.high,
         low: c.low,
         close: c.close,
       }));
+      const toRows = (tf: "5m" | "15m", cs: typeof candles1m) =>
+        cs.map((c) => ({
+          asset_id: asset.id,
+          timeframe: tf,
+          ts: c.ts,
+          open: c.open,
+          high: c.high,
+          low: c.low,
+          close: c.close,
+        }));
+      // ---- 4) upsert 1m + 5m + 15m (sem duplicados) ----
       const { error: upsertErr } = await supabase
         .from("candles")
-        .upsert(rows, { onConflict: "asset_id,timeframe,ts" });
+        .upsert([...rows1m, ...toRows("5m", candles5m), ...toRows("15m", candles15m)], {
+          onConflict: "asset_id,timeframe,ts",
+        });
       if (upsertErr) throw upsertErr;
-      summary.processed += rows.length;
+      summary.processed += rows1m.length;
 
-      // ---- 5) agregação ----
-      const candles5m = aggregateTo5m(candles1m);
-      const candles15m = aggregateTo15m(candles1m);
       if (candles5m.length < 60) continue;
 
       // ---- 6) gatilho 5m fechado ----
