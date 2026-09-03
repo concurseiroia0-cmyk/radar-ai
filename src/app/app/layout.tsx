@@ -1,0 +1,45 @@
+import { redirect } from "next/navigation";
+import Sidebar from "@/components/app/Sidebar";
+import Topbar from "@/components/app/Topbar";
+import { createServerSupabaseClient, isSupabaseConfigured } from "@/lib/services/supabase-server";
+
+export default async function AppLayout({ children }: { children: React.ReactNode }) {
+  const demo = !isSupabaseConfigured();
+  let email: string | null = null;
+  let quota: { date: string; used: number; remaining: number; source: string } | undefined;
+
+  if (!demo) {
+    const supabase = await createServerSupabaseClient();
+    if (!supabase) redirect("/login");
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) redirect("/login");
+    email = user.email ?? null;
+
+    // quota conceitual (Twelve Data free: 800/dia)
+    const now = new Date();
+    const start = new Date(now);
+    start.setUTCHours(0, 0, 0, 0);
+    const hours = now.getUTCHours();
+    const inSession = hours >= 7 && hours < 12;
+    const runs = Math.floor((now.getTime() - start.getTime()) / (2 * 60 * 1000));
+    const used = inSession ? Math.min(800, runs * 6) : Math.min(800, runs);
+    quota = {
+      date: now.toISOString().slice(0, 10),
+      used,
+      remaining: Math.max(0, 800 - used),
+      source: "twelvedata",
+    };
+  }
+
+  return (
+    <div className="flex min-h-screen bg-background">
+      <Sidebar />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <Topbar email={email} demo={demo} quota={quota} />
+        <main className="flex-1 p-4 md:p-6">{children}</main>
+      </div>
+    </div>
+  );
+}

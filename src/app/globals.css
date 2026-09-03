@@ -1,0 +1,147 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* Radar AI custom tokens */
+  --color-call: var(--call);
+  --color-put: var(--put);
+  --color-warn: var(--warn);
+  --color-info: var(--info);
+  --color-surface: var(--surface);
+  --color-ema9: var(--ema9);
+  --color-ema21: var(--ema21);
+  --color-ema50: var(--ema50);
+  --color-score-bad: var(--score-bad);
+  --color-score-weak: var(--score-weak);
+  --color-score-moderate: var(--score-moderate);
+  --color-score-good: var(--score-good);
+  --color-score-excellent: var(--score-excellent);
+}
+
+:root {
+  /* Radar AI Dark Theme (spec) — forced dark, .dark class on <html> */
+  --background: #0b0e11;
+  --foreground: #f5f7fa;
+  --card: #161b22;
+  --card-foreground: #f5f7fa;
+  --popover: #161b22;
+  --popover-foreground: #f5f7fa;
+  --primary: #4d9de0;
+  --primary-foreground: #0b0e11;
+  --secondary: #1f2733;
+  --secondary-foreground: #a9b3c0;
+  --muted: #1f2733;
+  --muted-foreground: #a9b3c0;
+  --accent: #1f2733;
+  --accent-foreground: #f5f7fa;
+  --destructive: #ea3943;
+  --border: #2a313c;
+  --input: #2a313c;
+  --ring: #4d9de0;
+  --chart-1: #4d9de0;
+  --chart-2: #16c784;
+  --chart-3: #f0b90b;
+  --chart-4: #ea3943;
+  --chart-5: #9d7aea;
+  --radius: 0.625rem;
+  --sidebar: #0b0e11;
+  --sidebar-foreground: #a9b3c0;
+  --sidebar-primary: #4d9de0;
+  --sidebar-primary-foreground: #f5f7fa;
+  --sidebar-accent: #1f2733;
+  --sidebar-accent-foreground: #f5f7fa;
+  --sidebar-border: #2a313c;
+  --sidebar-ring: #4d9de0;
+
+  /* Radar AI palette */
+  --call: #16c784;
+  --put: #ea3943;
+  --warn: #f0b90b;
+  --info: #4d9de0;
+  --surface: #161b22;
+  --ema9: #4d9de0;
+  --ema21: #f5a623;
+  --ema50: #9d7aea;
+
+  /* Score bar colors */
+  --score-bad: #6b7280;
+  --score-weak: #f0b90b;
+  --score-moderate: #f5a623;
+  --score-good: #16c784;
+  --score-excellent: #22d3b5;
+}
+
+.dark {
+  /* same palette — app is dark-only */
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+  ::selection {
+    background: color-mix(in oklab, var(--info) 35%, transparent);
+  }
+}
+
+/* Subtle glow for excellent scores */
+.score-glow {
+  box-shadow: 0 0 12px 1px color-mix(in srgb, var(--score-excellent) 45%, transparent);
+}
+
+/* Thin scrollbars for the trading UI */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #2a313c transparent;
+}
