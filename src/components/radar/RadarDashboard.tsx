@@ -7,11 +7,17 @@ import AssetTable from "./AssetTable";
 import SignalCard from "./SignalCard";
 import SimpleBoard from "./SimpleBoard";
 import { createBrowserSupabaseClient, SUPABASE_SCHEMA } from "@/lib/services/supabase";
+import type { SessionInfo } from "@/lib/plain-lang";
 
 interface RadarDashboardProps {
   initialSnapshots: DemoAssetSnapshot[];
   initialSignals: DemoSignal[];
   demo: boolean;
+  /** perfil do usuário (modo simples: quanto colocar por operação) */
+  banca: number;
+  riscoPct: number;
+  /** janela de sessão (quando os sinais estão ativos) */
+  sessao: SessionInfo;
 }
 
 type ViewMode = "simples" | "tecnico";
@@ -30,7 +36,7 @@ function readMode(): ViewMode {
 
 const modeListeners = new Set<() => void>();
 
-export default function RadarDashboard({ initialSnapshots, initialSignals, demo }: RadarDashboardProps) {
+export default function RadarDashboard({ initialSnapshots, initialSignals, demo, banca, riscoPct, sessao }: RadarDashboardProps) {
   const router = useRouter();
 
   // modo de exibição persistido (padrão: Simples). useSyncExternalStore é
@@ -91,7 +97,7 @@ export default function RadarDashboard({ initialSnapshots, initialSignals, demo 
       </div>
 
       {mode === "simples" ? (
-        <SimpleBoard snapshots={initialSnapshots} />
+        <SimpleBoard snapshots={initialSnapshots} banca={banca} riscoPct={riscoPct} sessao={sessao} />
       ) : (
         <>
           <section>

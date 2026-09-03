@@ -1,11 +1,19 @@
 import RadarDashboard from "@/components/radar/RadarDashboard";
 import AutoRefresh from "@/components/app/AutoRefresh";
 import { getRadarData } from "@/lib/data-access";
+import { getProfile } from "@/lib/actions/profile";
+import { sessionInfo } from "@/lib/plain-lang";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const data = await getRadarData();
+  const [data, profile] = await Promise.all([getRadarData(), getProfile()]);
+
+  const banca = profile?.banca ?? 500;
+  const riscoPct = profile?.risco_pct ?? 1;
+  const sessaoInicio = profile?.sessao_inicio ?? 7;
+  const sessaoFim = profile?.sessao_fim ?? 12;
+  const sessao = sessionInfo(sessaoInicio, sessaoFim);
 
   return (
     <div className="space-y-6">
@@ -18,7 +26,14 @@ export default async function DashboardPage() {
           </span>
         )}
       </div>
-      <RadarDashboard initialSnapshots={data.snapshots} initialSignals={data.signals} demo={data.demo} />
+      <RadarDashboard
+        initialSnapshots={data.snapshots}
+        initialSignals={data.signals}
+        demo={data.demo}
+        banca={banca}
+        riscoPct={riscoPct}
+        sessao={sessao}
+      />
     </div>
   );
 }

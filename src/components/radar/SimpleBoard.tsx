@@ -1,14 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowUpRight, TrendingDown, TrendingUp, Minus } from "lucide-react";
+import { ArrowUpRight, Clock, TrendingDown, TrendingUp, Minus, Wallet, CandlestickChart as CandleIcon } from "lucide-react";
 import type { DemoAssetSnapshot } from "@/lib/demo-data";
 import { fmt } from "@/lib/engine";
-import { plainVerdict } from "@/lib/plain-lang";
+import { plainVerdict, type SessionInfo } from "@/lib/plain-lang";
 import { Card, CardContent } from "@/components/ui/card";
 
 interface SimpleBoardProps {
   snapshots: DemoAssetSnapshot[];
+  /** perfil do usuário */
+  banca: number;
+  riscoPct: number;
+  /** janela de sessão (quando os sinais estão ativos) */
+  sessao: SessionInfo;
 }
 
 const KIND_META = {
@@ -17,9 +22,68 @@ const KIND_META = {
   wait: { badge: "border-warn/50 bg-warn/10 text-warn", icon: <Minus className="size-4" />, bar: "#f59e0b" },
 } as const;
 
-export default function SimpleBoard({ snapshots }: SimpleBoardProps) {
+export default function SimpleBoard({ snapshots, banca, riscoPct, sessao }: SimpleBoardProps) {
+  const stake = Number(((banca * riscoPct) / 100).toFixed(2));
+
   return (
     <div className="space-y-4">
+      {/* Como operar — resumo em linguagem simples */}
+      <Card className="border-border bg-card">
+        <CardContent className="grid gap-3 pt-5 sm:grid-cols-2 xl:grid-cols-4">
+          {/* Horário */}
+          <div className="flex items-start gap-2.5">
+            <span
+              className={`mt-0.5 inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-semibold ${
+                sessao.active ? "bg-call/15 text-call" : "bg-warn/15 text-warn"
+              }`}
+            >
+              <span className={`relative flex size-1.5 ${sessao.active ? "" : ""}`}>
+                <span
+                  className={`absolute inline-flex size-full rounded-full ${sessao.active ? "animate-ping bg-call/60" : ""}`}
+                />
+                <span className={`relative inline-flex size-1.5 rounded-full ${sessao.active ? "bg-call" : "bg-warn"}`} />
+              </span>
+              {sessao.active ? "SESSÃO ATIVA" : "FORA DA SESSÃO"}
+            </span>
+            <div className="text-sm leading-relaxed text-muted-foreground">
+              <span className="font-medium text-foreground">Horário de operar:</span> {sessao.windowUtc} (
+              {sessao.windowBrt}) — sinais só são gerados nessa janela.
+              {!sessao.active && sessao.nextStartBrt && (
+                <span className="text-warn"> Próxima sessão às {sessao.nextStartBrt} (Brasília).</span>
+              )}
+            </div>
+          </div>
+
+          {/* Vela */}
+          <div className="flex items-start gap-2.5">
+            <CandleIcon className="mt-0.5 size-4 shrink-0 text-info" />
+            <div className="text-sm leading-relaxed text-muted-foreground">
+              <span className="font-medium text-foreground">Vela base: 5 min.</span> O Radar calcula o sinal no
+              fechamento da vela de 5m — entre logo depois. 1m = mais rápido/arriscado; 15m = tendência de fundo.
+            </div>
+          </div>
+
+          {/* Valor */}
+          <div className="flex items-start gap-2.5">
+            <Wallet className="mt-0.5 size-4 shrink-0 text-info" />
+            <div className="text-sm leading-relaxed text-muted-foreground">
+              <span className="font-medium text-foreground">Valor por operação: R$ {stake.toFixed(2)}</span> ={" "}
+              {riscoPct}% da sua banca de R$ {banca.toFixed(2)}. Ajuste o risco na página Config.
+            </div>
+          </div>
+
+          {/* Expiração */}
+          <div className="flex items-start gap-2.5">
+            <Clock className="mt-0.5 size-4 shrink-0 text-info" />
+            <div className="text-sm leading-relaxed text-muted-foreground">
+              <span className="font-medium text-foreground">Expiração:</span> o sinal vale para a vela seguinte —
+              escolha ~5 min na plataforma (10 ou 15 min se não tiver 5). Sinal forte (≥75) é mais confiável.
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Cartões por ativo */}
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {snapshots.map((s) => {
           const v = plainVerdict(s.engine, s.pack, s.asset.symbol);

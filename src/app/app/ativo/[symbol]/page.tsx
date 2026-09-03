@@ -13,7 +13,8 @@ import type { Timeframe } from "@/lib/engine";
 import { evaluateStrategies, fmt, scoreBandInfo } from "@/lib/engine";
 import { getAssetPageData } from "@/lib/data-access";
 import { DEMO_ASSETS } from "@/lib/demo-data";
-import { plainOneLiner } from "@/lib/plain-lang";
+import { plainOneLiner, sessionInfo } from "@/lib/plain-lang";
+import { getProfile } from "@/lib/actions/profile";
 import AutoRefresh from "@/components/app/AutoRefresh";
 import CandlestickChart, { type SignalMarker } from "@/components/charts/CandlestickChart";
 import ScoreBar from "@/components/radar/ScoreBar";
@@ -38,8 +39,10 @@ export default async function AssetPage({
   const valid = DEMO_ASSETS.some((a) => a.symbol === symbol);
   if (!valid) notFound();
 
-  const data = await getAssetPageData(symbol);
+  const [data, profile] = await Promise.all([getAssetPageData(symbol), getProfile()]);
   if (!data) notFound();
+
+  const sessao = sessionInfo(profile?.sessao_inicio ?? 7, profile?.sessao_fim ?? 12);
 
   const candles = data.candles[timeframe];
   const last = candles[candles.length - 1];
@@ -109,6 +112,20 @@ export default async function AssetPage({
         </div>
       )}
 
+      {!data.demo && (
+        <div
+          className={`rounded-lg border px-3 py-2 text-xs ${
+            sessao.active ? "border-call/40 bg-call/10 text-call" : "border-warn/40 bg-warn/10 text-warn"
+          }`}
+        >
+          {sessao.active
+            ? `Sessão ativa (${sessao.windowUtc} / ${sessao.windowBrt}) — candles novos entram a cada ~2 min, página atualiza sozinha.`
+            : `Fora da janela de sinais (${sessao.windowUtc} / ${sessao.windowBrt}) — o gráfico fica parado porque o mercado não está sendo buscado agora${
+                sessao.nextStartBrt ? `. Próxima sessão às ${sessao.nextStartBrt} (Brasília).` : "."
+              }`}
+        </div>
+      )}
+
       <div className="grid gap-4 lg:grid-cols-3">
         {/* Gráfico */}
         <div className="lg:col-span-2">
@@ -126,6 +143,12 @@ export default async function AssetPage({
                 resistance={pack.resistance}
                 height={440}
               />
+              {last && (
+                <div className="mt-2 text-xs text-muted-foreground">
+                  Última vela fechada: {new Date(last.ts * 1000).toISOString().slice(11, 16)} UTC — o gráfico mostra
+                  candles já fechados; o preço mexe quando uma vela nova fecha{!data.demo && sessao.active ? " (a cada ~2 min)" : ""}.
+                </div>
+              )}
               <div className="mt-2 flex flex-wrap gap-4 text-xs text-muted-foreground">
                 <span className="flex items-center gap-1.5">
                   <span className="h-0.5 w-4 rounded bg-ema9" /> EMA 9
