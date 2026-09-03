@@ -158,6 +158,10 @@ export default async function AssetPage({
                 support={pack.support}
                 resistance={pack.resistance}
                 height={440}
+                pendingSignal={data.signals.find((s) => s.result === "pending") ?? null}
+                expirySeconds={5 * 60}
+                candleSeconds={data.demo || sessao.active ? CANDLE_SECONDS[timeframe] : undefined}
+                candleLabel={timeframe}
               />
               {last && (
                 <div className="mt-2 text-xs text-muted-foreground">
