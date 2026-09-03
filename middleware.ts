@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { SUPABASE_SCHEMA } from "@/lib/services/supabase";
 
 /**
  * Middleware de sessão (Supabase SSR).
@@ -14,6 +15,7 @@ export async function middleware(request: NextRequest) {
 
   let response = NextResponse.next({ request });
   const supabase = createServerClient(url, anon, {
+    db: { schema: SUPABASE_SCHEMA },
     cookies: {
       getAll() {
         return request.cookies.getAll();

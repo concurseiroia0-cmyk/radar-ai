@@ -27,7 +27,8 @@ export interface RadarPageData {
 }
 
 export async function getRadarData(): Promise<RadarPageData> {
-  if (!isSupabaseConfigured()) {
+  if (!isSupabaseConfigured() || !process.env.SUPABASE_SERVICE_KEY) {
+    // Sem service key não há como ler via service role → demo em vez de erro 500.
     return { demo: true, snapshots: getAssetSnapshots(), signals: getDemoSignalsAll(4) };
   }
   const supabase = await createServiceSupabaseClient();
@@ -78,7 +79,7 @@ export interface AssetPageData {
 }
 
 export async function getAssetPageData(symbol: string): Promise<AssetPageData | null> {
-  if (!isSupabaseConfigured()) {
+  if (!isSupabaseConfigured() || !process.env.SUPABASE_SERVICE_KEY) {
     const candles = {
       "1m": getDemoCandles(symbol, "1m"),
       "5m": getDemoCandles(symbol, "5m"),
@@ -155,7 +156,7 @@ function fallbackPack(): Candle[] {
 }
 
 export async function getSinaisPageData(): Promise<{ demo: boolean; signals: DemoSignal[] }> {
-  if (!isSupabaseConfigured()) {
+  if (!isSupabaseConfigured() || !process.env.SUPABASE_SERVICE_KEY) {
     return { demo: true, signals: getDemoSignalsAll(10) };
   }
   const supabase = await createServiceSupabaseClient();
@@ -194,6 +195,7 @@ export async function getBacktestResult(id: string): Promise<{ result: BacktestR
     return { result, symbol, timeframe: tf, demo: true };
   }
   const supabase = await createServiceSupabaseClient();
+  if (!supabase) return null;
   const { data: bt } = await supabase!.from("backtests").select("*, assets(symbol)").eq("id", id).maybeSingle();
   if (!bt) return null;
   const { data: tradeRows } = await supabase!
@@ -221,7 +223,8 @@ export async function getBacktestResult(id: string): Promise<{ result: BacktestR
 }
 
 export async function getSymbols(): Promise<string[]> {
-  if (!isSupabaseConfigured()) return DEMO_ASSETS.map((a) => a.symbol);
+  if (!isSupabaseConfigured() || !process.env.SUPABASE_SERVICE_KEY)
+    return DEMO_ASSETS.map((a) => a.symbol);
   const supabase = await createServiceSupabaseClient();
   const { data } = await supabase!.from("assets").select("symbol").eq("active", true).order("symbol");
   return (data ?? []).map((r) => r.symbol as string);

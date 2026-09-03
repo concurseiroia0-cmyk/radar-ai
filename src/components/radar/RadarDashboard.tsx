@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import type { DemoAssetSnapshot, DemoSignal } from "@/lib/demo-data";
 import AssetTable from "./AssetTable";
 import SignalCard from "./SignalCard";
-import { createBrowserSupabaseClient } from "@/lib/services/supabase";
+import { createBrowserSupabaseClient, SUPABASE_SCHEMA } from "@/lib/services/supabase";
 
 interface RadarDashboardProps {
   initialSnapshots: DemoAssetSnapshot[];
@@ -23,7 +23,7 @@ export default function RadarDashboard({ initialSnapshots, initialSignals, demo 
       .channel("signals-live")
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "signals" },
+        { event: "INSERT", schema: SUPABASE_SCHEMA, table: "signals" },
         (payload) => {
           const row = payload.new as Record<string, unknown>;
           const sig: DemoSignal = {

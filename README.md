@@ -28,7 +28,7 @@ Radar de Day Trade com **motor técnico determinístico** + filtros + score 0–
     /ai                 payload determinístico + consenso multi-IA
     /backtest/runner    backtest compartilhado (lotes de 5000, t+1 close, stats)
     /services           supabase, marketData, telegram, openrouter, nvidia, paperResolution
-supabase/migrations/0001_init.sql   schema completo + RLS (colar no SQL Editor)
+supabase/migrations/0001_init.sql   schema completo + RLS (colar no SQL Editor) — tudo no schema isolado `radar_ai`
 ```
 
 ## Rodar
@@ -47,7 +47,9 @@ Sem `NEXT_PUBLIC_SUPABASE_URL` o app roda em **modo demonstração**: dados sint
 
 ## Configuração completa (produção)
 
-1. **Supabase**: crie o projeto → SQL Editor → cole `supabase/migrations/0001_init.sql` → pegue URL + anon key + service key.
+> ⚠️ **Projeto Supabase compartilhado:** o Radar AI pode usar o MESMO projeto de outro app sem interferir em nada. Todo o schema vive no schema PostgreSQL isolado **`radar_ai`** (tabelas, funções, triggers e políticas) — nada em `public` é criado, alterado ou removido. A única coisa compartilhada é o login (tabela `auth.users`, padrão do Supabase).
+
+1. **Supabase** (1ª vez): **Project Settings → API → Exposed schemas → adicione `radar_ai`** (obrigatório — sem isso a Data API ignora o schema). Depois, SQL Editor → cole `supabase/migrations/0001_init.sql` → pegue URL + anon key + service key.
 2. **.env.local**: copie de `.env.example` e preencha (veja abaixo). A chave `SUPABASE_SERVICE_KEY` fica **só no servidor** — nunca no cliente.
 3. **Dados**: chaves gratuitas Twelve Data (https://twelvedata.com) e/ou Finnhub (https://finnhub.io).
 4. **IA**: `OPENROUTER_KEY` (modelos gratuitos com fallback automático — lista atualizada em `src/lib/services/openrouter.ts`, sobrescrevível via `OPROUTER_FREE_MODELS`).
@@ -60,7 +62,7 @@ Sem `NEXT_PUBLIC_SUPABASE_URL` o app roda em **modo demonstração**: dados sint
 | Variável | Obrigatória | Descrição |
 |---|---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` / `ANON_KEY` | sim | Supabase (sem elas → demo mode) |
-| `SUPABASE_SERVICE_KEY` | produção | escrita server-side (cron, backtest) |
+| `SUPABASE_SERVICE_KEY` | produção | escrita server-side (cron, backtest) — sem ela cron/backtest não gravam |
 | `TWELVEDATA_KEY` / `FINNHUB_KEY` | produção | candles 1m (primário + fallback) |
 | `OPENROUTER_KEY` | alertas IA | consenso multi-modelo |
 | `TELEGRAM_BOT_TOKEN` / `CHAT_ID` | alertas | envio após consenso válido |
