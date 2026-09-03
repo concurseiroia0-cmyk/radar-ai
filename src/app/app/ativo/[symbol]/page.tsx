@@ -13,6 +13,8 @@ import type { Timeframe } from "@/lib/engine";
 import { evaluateStrategies, fmt, scoreBandInfo } from "@/lib/engine";
 import { getAssetPageData } from "@/lib/data-access";
 import { DEMO_ASSETS } from "@/lib/demo-data";
+import { plainOneLiner } from "@/lib/plain-lang";
+import AutoRefresh from "@/components/app/AutoRefresh";
 import CandlestickChart, { type SignalMarker } from "@/components/charts/CandlestickChart";
 import ScoreBar from "@/components/radar/ScoreBar";
 import { Badge } from "@/components/ui/badge";
@@ -85,6 +87,7 @@ export default async function AssetPage({
             </div>
           </div>
         </div>
+        <AutoRefresh intervalMs={45000} />
         <div className="flex gap-1 rounded-lg border border-border bg-surface p-1">
           {TFS.map((t) => (
             <Link
@@ -155,13 +158,18 @@ export default async function AssetPage({
                 <span className="text-4xl font-bold tabular-nums" style={{ color: band.color }}>
                   {engine.score}
                 </span>
-                <div className="flex-1">
+              <div className="flex-1">
                   <ScoreBar score={engine.score} size="lg" showLabel={false} />
                   <div className="mt-1 text-xs text-muted-foreground">
                     {band.emoji} {band.label} {engine.valid && engine.score >= 75 && "— elegível p/ alerta"}
                   </div>
                 </div>
               </div>
+              {ready && (
+                <p className="rounded-lg bg-surface px-3 py-2 text-sm leading-relaxed text-foreground/90">
+                  {plainOneLiner(engine, pack)}
+                </p>
+              )}
               <div className="space-y-1.5 border-t border-border pt-3">
                 {confluences.length ? (
                   confluences.map((c) => (

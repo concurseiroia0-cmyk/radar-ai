@@ -1,4 +1,5 @@
 import PaperBoard, { type PaperTradeUI } from "@/components/paper/PaperBoard";
+import AutoRefresh from "@/components/app/AutoRefresh";
 import type { Timeframe } from "@/lib/engine";
 import { getProfile } from "@/lib/actions/profile";
 import { getDemoSignalsAll } from "@/lib/demo-data";
@@ -40,7 +41,7 @@ export default async function PaperPage() {
             direction: r.direction as "CALL" | "PUT",
             stake: Number(r.stake),
             entryPrice: Number(r.entry_price),
-            expiresAt: r.expires_at ? new Date(String(r.expires_at)).getTime() / 1000 : Date.now() / 1000,
+            expiresAt: r.expires_at ? new Date(String(r.expires_at)).getTime() / 1000 : 0,
             result: (r.result as PaperTradeUI["result"]) ?? "pending",
             pnl: Number(r.pnl),
             createdAt: new Date(String(r.created_at)).getTime() / 1000,
@@ -74,11 +75,14 @@ export default async function PaperPage() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-xl font-bold tracking-tight">Paper Trading</h1>
-        <p className="text-sm text-muted-foreground">
-          Simulador com banca inicial R$ 500 • risco {riscoPct}% por operação • expiração automática por timeframe.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h1 className="text-xl font-bold tracking-tight">Paper Trading</h1>
+          <p className="text-sm text-muted-foreground">
+            Simulador com banca inicial R$ 500 • risco {riscoPct}% por operação • expiração automática por timeframe.
+          </p>
+        </div>
+        <AutoRefresh intervalMs={30000} />
       </div>
       <PaperBoard
         demo={demo}

@@ -7,7 +7,6 @@ import { Clock, Loader2, Wallet } from "lucide-react";
 import type { DemoSignal } from "@/lib/demo-data";
 import { getDemoCandles } from "@/lib/demo-data";
 import { resolvePnl, resolveResult } from "@/lib/paper";
-import { fmt } from "@/lib/engine";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -44,15 +43,47 @@ const RESULT_META: Record<string, { label: string; cls: string }> = {
 
 const STORAGE_KEY = "radar-ai-demo-paper";
 
+/** Constrói a trade do modo demo (fora do componente p/ manter render puro). */
+function buildDemoTrade(signal: DemoSignal, banca: number, riscoPct: number): PaperTradeUI {
+  const stake = Number(((banca * riscoPct) / 100).toFixed(2));
+  // demo: entra no preço ATUAL e expira a partir de AGORA (não do candle antigo do sinal)
+  const tfDur = signal.timeframe === "15m" ? 900 : signal.timeframe === "1m" ? 60 : 300;
+  const candlesNow = getDemoCandles(signal.symbol, (signal.timeframe as "5m") || "5m");
+  const latest = candlesNow[candlesNow.length - 1];
+  return {
+    id: `pt-${Date.now()}`,
+    symbol: signal.symbol,
+    timeframe: signal.timeframe,
+    direction: signal.direction as "CALL" | "PUT",
+    stake,
+    entryPrice: latest?.close ?? signal.entryPrice,
+    expiresAt: Date.now() / 1000 + tfDur,
+    result: "pending",
+    pnl: 0,
+    createdAt: Date.now() / 1000,
+  };
+}
+
 export default function PaperBoard({ demo, initialBanca, riscoPct, signals, initialTrades, canEnter }: PaperBoardProps) {
   const [trades, setTrades] = useState<PaperTradeUI[]>(initialTrades);
   const [banca, setBanca] = useState(initialBanca);
   const [enteringId, setEnteringId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now() / 1000);
 
-  // carrega estado demo persistido
+  // Modo real: o auto-refresh da página entrega props novas do servidor —
+  // ajusta o estado durante o render (padrão React p/ "ajustar estado quando
+  // uma prop muda"). Modo demo mantém o estado local como fonte da verdade.
+  const [lastServer, setLastServer] = useState({ trades: initialTrades, banca: initialBanca });
+  if (!demo && (lastServer.trades !== initialTrades || lastServer.banca !== initialBanca)) {
+    setLastServer({ trades: initialTrades, banca: initialBanca });
+    setTrades(initialTrades);
+    setBanca(initialBanca);
+  }
+
+  // carrega estado demo persistido (uma única leitura de localStorage no mount)
   useEffect(() => {
     if (!demo) return;
+    /* eslint-disable react-hooks/set-state-in-effect -- sync única de estado persistido (localStorage) no mount */
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
@@ -65,6 +96,7 @@ export default function PaperBoard({ demo, initialBanca, riscoPct, signals, init
     } catch {
       /* ignore */
     }
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [demo]);
 
   // persiste estado demo
@@ -83,15 +115,20 @@ export default function PaperBoard({ demo, initialBanca, riscoPct, signals, init
     const tick = setInterval(() => {
       const t = Date.now() / 1000;
       setNow(t);
-      setTrades((prev) => {
-        const toResolve = prev.filter((tr) => tr.result === "pending" && tr.expiresAt <= t);
-        if (!toResolve.length) return prev;
-        let bancaDelta = 0;
-        const next = prev.map((tr) => {
+      const toResolve = trades.filter((tr) => tr.result === "pending" && tr.expiresAt <= t);
+      if (!toResolve.length) return;
+      // lê os candles de expiração fora do updater (leitura com cache = impura p/ render)
+      const exitBySymbol = new Map<string, number | undefined>();
+      for (const tr of toResolve) {
+        if (exitBySymbol.has(tr.symbol)) continue;
+        const candles = getDemoCandles(tr.symbol, (tr.timeframe as "5m") || "5m");
+        exitBySymbol.set(tr.symbol, candles[candles.length - 1]?.close);
+      }
+      let bancaDelta = 0;
+      setTrades((prev) =>
+        prev.map((tr) => {
           if (tr.result !== "pending" || tr.expiresAt > t) return tr;
-          // demo: série termina em "agora" — usa o último close disponível como preço de expiração
-          const candles = getDemoCandles(tr.symbol, (tr.timeframe as "5m") || "5m");
-          const exit = candles[candles.length - 1]?.close;
+          const exit = exitBySymbol.get(tr.symbol);
           if (exit === undefined) {
             bancaDelta += tr.stake; // sem preço: devolve o stake
             return { ...tr, result: "void" as const, pnl: 0 };
@@ -100,13 +137,12 @@ export default function PaperBoard({ demo, initialBanca, riscoPct, signals, init
           const pnl = resolvePnl(result, tr.stake);
           bancaDelta += tr.stake + pnl; // devolve stake + pnl
           return { ...tr, result, pnl };
-        });
-        setBanca((b) => Number((b + bancaDelta).toFixed(2)));
-        return next;
-      });
+        })
+      );
+      setBanca((b) => Number((b + bancaDelta).toFixed(2)));
     }, 2000);
     return () => clearInterval(tick);
-  }, [demo]);
+  }, [demo, trades]);
 
   const enter = async (signal: DemoSignal) => {
     if (demo) {
@@ -115,22 +151,7 @@ export default function PaperBoard({ demo, initialBanca, riscoPct, signals, init
         toast.error("Banca zerada — zere o modo demo");
         return;
       }
-      // demo: entra no preço ATUAL e expira a partir de AGORA (não do candle antigo do sinal)
-      const tfDur = signal.timeframe === "15m" ? 900 : signal.timeframe === "1m" ? 60 : 300;
-      const candlesNow = getDemoCandles(signal.symbol, (signal.timeframe as "5m") || "5m");
-      const latest = candlesNow[candlesNow.length - 1];
-      const trade: PaperTradeUI = {
-        id: `pt-${Date.now()}`,
-        symbol: signal.symbol,
-        timeframe: signal.timeframe,
-        direction: signal.direction as "CALL" | "PUT",
-        stake,
-        entryPrice: latest?.close ?? signal.entryPrice,
-        expiresAt: Date.now() / 1000 + tfDur,
-        result: "pending",
-        pnl: 0,
-        createdAt: Date.now() / 1000,
-      };
+      const trade = buildDemoTrade(signal, banca, riscoPct);
       setTrades((prev) => [trade, ...prev]);
       setBanca((b) => Number((b - stake).toFixed(2)));
       toast.success(`Paper demo: ${signal.direction} ${signal.symbol} — stake R$ ${stake.toFixed(2)}`);
