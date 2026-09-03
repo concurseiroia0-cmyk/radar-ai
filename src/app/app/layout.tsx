@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import Sidebar from "@/components/app/Sidebar";
 import Topbar from "@/components/app/Topbar";
 import { createServerSupabaseClient, isSupabaseConfigured } from "@/lib/services/supabase-server";
+import { getProfile } from "@/lib/actions/profile";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const demo = !isSupabaseConfigured();
@@ -17,14 +18,20 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     if (!user) redirect("/login");
     email = user.email ?? null;
 
-    // quota conceitual (Twelve Data free: 800/dia)
+    // quota conceitual (Twelve Data free: 800/dia) — usa a janela e os ativos do perfil
+    const profile = await getProfile();
+    const sessaoInicio = profile?.sessao_inicio ?? 7;
+    const sessaoFim = profile?.sessao_fim ?? 12;
+    const nAssets = Math.max(1, profile?.ativos_ativos?.length ?? 6);
     const now = new Date();
     const start = new Date(now);
     start.setUTCHours(0, 0, 0, 0);
     const hours = now.getUTCHours();
-    const inSession = hours >= 7 && hours < 12;
-    const runs = Math.floor((now.getTime() - start.getTime()) / (2 * 60 * 1000));
-    const used = inSession ? Math.min(800, runs * 6) : Math.min(800, runs);
+    const inSession =
+      sessaoFim > sessaoInicio ? hours >= sessaoInicio && hours < sessaoFim : hours >= sessaoInicio || hours < sessaoFim;
+    // cron a cada 5 min (7 ativos × 12 runs/h ≈ 84 chamadas/h)
+    const runs = Math.floor((now.getTime() - start.getTime()) / (5 * 60 * 1000));
+    const used = inSession ? Math.min(800, runs * nAssets) : Math.min(800, runs);
     quota = {
       date: now.toISOString().slice(0, 10),
       used,

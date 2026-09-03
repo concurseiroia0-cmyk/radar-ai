@@ -58,9 +58,10 @@ export async function POST(req: Request) {
   const sessaoInicio = Number(prof?.sessao_inicio ?? process.env.SESSION_START ?? 7);
   const sessaoFim = Number(prof?.sessao_fim ?? process.env.SESSION_END ?? 12);
   const scoreMin = Number(prof?.score_minimo ?? process.env.DEFAULT_SCORE_MIN ?? 75);
-  const ativos = (prof?.ativos_ativos?.length ? prof.ativos_ativos : [
+  const ativos = prof?.ativos_ativos?.length ? prof.ativos_ativos : [
     "EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "EUR/JPY", "GBP/JPY",
-  ]).slice(0, 6);
+  ];
+  // atenção à cota do provedor: N ativos × chamadas por dia ≤ cota gratuita.
 
   // ---- 2) janela de sessão (UTC) ----
   const now = new Date();
