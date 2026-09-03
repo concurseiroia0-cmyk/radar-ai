@@ -1,14 +1,20 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowUpRight, Clock, TrendingDown, TrendingUp, Minus, Wallet, CandlestickChart as CandleIcon } from "lucide-react";
 import type { DemoAssetSnapshot } from "@/lib/demo-data";
 import { fmt } from "@/lib/engine";
 import { plainVerdict, type SessionInfo } from "@/lib/plain-lang";
 import { Card, CardContent } from "@/components/ui/card";
+import EntryBanner from "./EntryBanner";
+import type { DemoSignal } from "@/lib/demo-data";
+import { format } from "date-fns";
 
 interface SimpleBoardProps {
   snapshots: DemoAssetSnapshot[];
+  /** sinais reais/demo recentes (instrução de entrada com prazo) */
+  signals: DemoSignal[];
   /** perfil do usuário */
   banca: number;
   riscoPct: number;
@@ -16,17 +22,31 @@ interface SimpleBoardProps {
   sessao: SessionInfo;
 }
 
+const ENTRY_WINDOW_SECONDS = 5 * 60;
+
 const KIND_META = {
   call: { badge: "border-call/60 bg-call/15 text-call", icon: <TrendingUp className="size-4" />, bar: "#22c55e" },
   put: { badge: "border-put/60 bg-put/15 text-put", icon: <TrendingDown className="size-4" />, bar: "#ef4444" },
   wait: { badge: "border-warn/50 bg-warn/10 text-warn", icon: <Minus className="size-4" />, bar: "#f59e0b" },
 } as const;
 
-export default function SimpleBoard({ snapshots, banca, riscoPct, sessao }: SimpleBoardProps) {
+export default function SimpleBoard({ snapshots, signals, banca, riscoPct, sessao }: SimpleBoardProps) {
   const stake = Number(((banca * riscoPct) / 100).toFixed(2));
+
+  // relógio ao vivo — p/ prazo dos sinais (evita Date.now() no render)
+  const [now, setNow] = useState(() => Date.now() / 1000);
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now() / 1000), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  // sinal pendente mais recente — instrução "entre agora"
+  const activeSignal = signals.find((s) => s.result === "pending") ?? null;
 
   return (
     <div className="space-y-4">
+      {/* Instrução de entrada com prazo (CALL/PUT + 5 min + countdown) */}
+      <EntryBanner signal={activeSignal} />
       {/* Como operar — resumo em linguagem simples */}
       <Card className="border-border bg-card">
         <CardContent className="grid gap-3 pt-5 sm:grid-cols-2 xl:grid-cols-4">
@@ -88,6 +108,8 @@ export default function SimpleBoard({ snapshots, banca, riscoPct, sessao }: Simp
         {snapshots.map((s) => {
           const v = plainVerdict(s.engine, s.pack, s.asset.symbol);
           const meta = KIND_META[v.kind];
+          const assetSignal = signals.find((sig) => sig.symbol === s.asset.symbol && sig.result === "pending");
+          const deadline = assetSignal ? assetSignal.ts + ENTRY_WINDOW_SECONDS : null;
           return (
             <Link key={s.asset.symbol} href={`/app/ativo/${encodeURIComponent(s.asset.symbol)}`} className="group">
               <Card className="h-full border-border bg-card transition-colors group-hover:border-info/60">
@@ -134,6 +156,19 @@ export default function SimpleBoard({ snapshots, banca, riscoPct, sessao }: Simp
 
                   {/* Resumo em linguagem simples */}
                   <p className="text-sm leading-relaxed text-muted-foreground">{v.summary}</p>
+
+                  {/* Prazo do sinal deste ativo */}
+                  {assetSignal && deadline && (
+                    <p
+                      className={`rounded-md px-2.5 py-1.5 text-xs font-medium ${
+                        now > deadline ? "bg-put/10 text-put" : "bg-call/10 text-call"
+                      }`}
+                    >
+                      {now > deadline
+                        ? `⏰ ${s.asset.symbol}: passou do horário — espere o próximo sinal`
+                        : `▶ ${s.asset.symbol}: ${assetSignal.direction} até ${format(new Date(deadline * 1000), "HH:mm:ss")} (seu horário)`}
+                    </p>
+                  )}
                 </CardContent>
               </Card>
             </Link>

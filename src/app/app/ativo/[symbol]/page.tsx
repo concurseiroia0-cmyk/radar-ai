@@ -16,6 +16,7 @@ import { DEMO_ASSETS } from "@/lib/demo-data";
 import { plainOneLiner, sessionInfo } from "@/lib/plain-lang";
 import { getProfile } from "@/lib/actions/profile";
 import AutoRefresh from "@/components/app/AutoRefresh";
+import EntryBanner from "@/components/radar/EntryBanner";
 import CandlestickChart, { type SignalMarker } from "@/components/charts/CandlestickChart";
 import ScoreBar from "@/components/radar/ScoreBar";
 import { Badge } from "@/components/ui/badge";
@@ -90,7 +91,7 @@ export default async function AssetPage({
             </div>
           </div>
         </div>
-        <AutoRefresh intervalMs={45000} />
+        <AutoRefresh intervalMs={15000} />
         <div className="flex gap-1 rounded-lg border border-border bg-surface p-1">
           {TFS.map((t) => (
             <Link
@@ -111,6 +112,9 @@ export default async function AssetPage({
           Dados de demonstração — candles sintéticos processados pelo motor real.
         </div>
       )}
+
+      {/* Instrução de entrada com prazo (CALL/PUT + 5 min + countdown) */}
+      <EntryBanner signal={data.signals.find((s) => s.result === "pending") ?? null} />
 
       {!data.demo && (
         <div

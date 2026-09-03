@@ -97,7 +97,13 @@ export default function RadarDashboard({ initialSnapshots, initialSignals, demo,
       </div>
 
       {mode === "simples" ? (
-        <SimpleBoard snapshots={initialSnapshots} banca={banca} riscoPct={riscoPct} sessao={sessao} />
+        <SimpleBoard
+          snapshots={initialSnapshots}
+          signals={initialSignals}
+          banca={banca}
+          riscoPct={riscoPct}
+          sessao={sessao}
+        />
       ) : (
         <>
           <section>

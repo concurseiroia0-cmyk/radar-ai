@@ -7,7 +7,6 @@ import {
   getDemoCandles,
   getDemoSignalsAll,
   scanSignals,
-  type DemoAsset,
   type DemoAssetSnapshot,
   type DemoSignal,
 } from "@/lib/demo-data";
@@ -66,7 +65,32 @@ export async function getRadarData(): Promise<RadarPageData> {
       lastSignal: null,
     });
   }
-  return { demo: false, snapshots, signals: [] };
+
+  // sinais reais recentes (o Modo Simples mostra a instrução de entrada com prazo)
+  const { data: sigRows } = await supabase!
+    .from("signals")
+    .select("*, assets(symbol)")
+    .order("created_at", { ascending: false })
+    .limit(15);
+  const signals: DemoSignal[] = (sigRows ?? []).map((r) => ({
+    id: String(r.id),
+    symbol: (r.assets as { symbol?: string })?.symbol ?? "—",
+    timeframe: r.timeframe as Timeframe,
+    direction: r.direction as DemoSignal["direction"],
+    score: Number(r.score),
+    strategy: r.strategy ?? "",
+    confluences: [],
+    reasons: [],
+    entryPrice: Number(r.entry_price),
+    ts: new Date(String(r.created_at)).getTime() / 1000,
+    result: (r.result as DemoSignal["result"]) ?? "pending",
+    aiPass: Boolean(r.ai_pass),
+    aiConsensusLabel: (r.ai_consensus as { favoravel?: string })?.favoravel
+      ? `${String((r.ai_consensus as { favoravel?: string }).favoravel)} ✓`
+      : "—",
+    invalidReasons: [],
+  }));
+  return { demo: false, snapshots, signals };
 }
 
 export interface AssetPageData {

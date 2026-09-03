@@ -11,7 +11,7 @@ export default async function SinaisPage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-bold tracking-tight">Sinais</h1>
-        <AutoRefresh intervalMs={30000} />
+        <AutoRefresh intervalMs={20000} />
         {data.demo && (
           <span className="rounded-md border border-warn/50 bg-warn/10 px-2 py-0.5 text-xs text-warn">
             Demo

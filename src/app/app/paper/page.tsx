@@ -82,7 +82,7 @@ export default async function PaperPage() {
             Simulador com banca inicial R$ 500 • risco {riscoPct}% por operação • expiração automática por timeframe.
           </p>
         </div>
-        <AutoRefresh intervalMs={30000} />
+        <AutoRefresh intervalMs={20000} />
       </div>
       <PaperBoard
         demo={demo}
