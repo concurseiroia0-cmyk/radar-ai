@@ -13,7 +13,8 @@ import type { Timeframe } from "@/lib/engine";
 import { evaluateStrategies, fmt, scoreBandInfo } from "@/lib/engine";
 import { getAssetPageData } from "@/lib/data-access";
 import { DEMO_ASSETS } from "@/lib/demo-data";
-import { plainOneLiner, sessionInfo } from "@/lib/plain-lang";
+import { plainOneLiner } from "@/lib/plain-lang";
+import { marketSession } from "@/lib/schedule";
 import { getProfile } from "@/lib/actions/profile";
 import AutoRefresh from "@/components/app/AutoRefresh";
 import EntryBanner from "@/components/radar/EntryBanner";
@@ -50,7 +51,9 @@ export default async function AssetPage({
   const [data, profile] = await Promise.all([getAssetPageData(symbol), getProfile()]);
   if (!data) notFound();
 
-  const sessao = sessionInfo(profile?.sessao_inicio ?? 7, profile?.sessao_fim ?? 12);
+  // janela de mercado conforme o tipo do ativo (forex → IQ Option; ação → NYSE)
+  const assetDef = DEMO_ASSETS.find((a) => a.symbol === symbol);
+  const sessao = marketSession(assetDef?.type === "stock" ? "stock" : "forex");
 
   const candles = data.candles[timeframe];
   const last = candles[candles.length - 1];
@@ -125,8 +128,12 @@ export default async function AssetPage({
         </div>
       )}
 
-      {/* Instrução de entrada com prazo (CALL/PUT + 5 min + countdown) */}
-      <EntryBanner signal={data.signals.find((s) => s.result === "pending") ?? null} />
+      {/* Instrução de entrada com prazo (CALL/PUT + timer + valor + expiração) */}
+      <EntryBanner
+        signal={data.signals.find((s) => s.result === "pending") ?? null}
+        banca={profile?.banca ?? 500}
+        riscoPct={profile?.risco_pct ?? 1}
+      />
 
       {!data.demo && (
         <div
@@ -135,9 +142,11 @@ export default async function AssetPage({
           }`}
         >
           {sessao.active
-            ? `Sessão ativa (${sessao.windowUtc} / ${sessao.windowBrt}) — candles novos entram a cada ~2 min, página atualiza sozinha.`
-            : `Fora da janela de sinais (${sessao.windowUtc} / ${sessao.windowBrt}) — o gráfico fica parado porque o mercado não está sendo buscado agora${
-                sessao.nextStartBrt ? `. Próxima sessão às ${sessao.nextStartBrt} (Brasília).` : "."
+            ? `Mercado aberto (${sessao.windowBrt}) — candles novos entram a cada ~2 min, página atualiza sozinha.`
+            : `Mercado fechado agora (${sessao.windowBrt}) — o gráfico fica parado porque não buscamos candles fora do horário${
+                sessao.nextStartDayPt
+                  ? `. Próxima abertura ${sessao.nextStartDayPt} às ${sessao.nextStartBrt} (Brasília / ${sessao.nextStartUtc} UTC).`
+                  : "."
               }`}
         </div>
       )}

@@ -54,6 +54,13 @@ export interface AlertOptions {
   confluencesPassed: number;
   consensus: ConsensusResult | null;
   entryPrice: number;
+  /** Momento em que o sinal foi criado (fechamento da vela) — usado p/ o prazo de validade. */
+  createdAt?: Date;
+}
+
+function fmtUtcClock(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
 }
 
 const DIR_EMOJI: Record<Direction, string> = { CALL: "🟢", PUT: "🔴", NEUTRAL: "⚪" };
@@ -92,6 +99,11 @@ export function formatAlert(o: AlertOptions): string {
     "",
     "⚠️ Entrada somente se o preço permanecer na região",
     `⏱️ Expiração sugerida: *${o.timeframe === "15m" ? "15" : o.timeframe === "1m" ? "1" : "5"} minutos*`,
+    ...(o.createdAt
+      ? [
+          `⏳ *Entre até* ${fmtUtcClock(new Date(o.createdAt.getTime() + 5 * 60_000))} UTC — depois desse horário o sinal expira e *NÃO é recomendado operar* nele.`,
+        ]
+      : []),
     "",
     `*Validado: Técnico + Consenso IA*`,
     "",

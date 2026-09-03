@@ -1,6 +1,7 @@
 "use server";
 
 import { createServerSupabaseClient } from "@/lib/services/supabase-server";
+import { ACTIVE_SYMBOLS } from "@/lib/assets";
 
 export interface ProfileData {
   banca: number;
@@ -22,7 +23,7 @@ export async function demoProfile(): Promise<ProfileData> {
     score_minimo: 75,
     sessao_inicio: 7,
     sessao_fim: 12,
-    ativos_ativos: ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "EUR/JPY", "GBP/JPY"],
+    ativos_ativos: [...ACTIVE_SYMBOLS],
     telegram_configured: Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID),
     apis: {
       twelvedata: Boolean(process.env.TWELVEDATA_KEY),

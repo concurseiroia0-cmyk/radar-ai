@@ -7,7 +7,7 @@ import AssetTable from "./AssetTable";
 import SignalCard from "./SignalCard";
 import SimpleBoard from "./SimpleBoard";
 import { createBrowserSupabaseClient, SUPABASE_SCHEMA } from "@/lib/services/supabase";
-import type { SessionInfo } from "@/lib/plain-lang";
+import type { SessionInfo } from "@/lib/schedule";
 
 interface RadarDashboardProps {
   initialSnapshots: DemoAssetSnapshot[];
@@ -116,7 +116,7 @@ export default function RadarDashboard({ initialSnapshots, initialSignals, demo,
           </section>
 
           <section>
-            <h2 className="mb-3 text-sm font-semibold text-muted-foreground">RADAR — 6 ATIVOS</h2>
+            <h2 className="mb-3 text-sm font-semibold text-muted-foreground">RADAR — ATIVOS</h2>
             <AssetTable snapshots={initialSnapshots} />
           </section>
         </>

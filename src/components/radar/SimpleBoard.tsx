@@ -5,7 +5,9 @@ import Link from "next/link";
 import { ArrowUpRight, Clock, TrendingDown, TrendingUp, Minus, Wallet, CandlestickChart as CandleIcon } from "lucide-react";
 import type { DemoAssetSnapshot } from "@/lib/demo-data";
 import { fmt } from "@/lib/engine";
-import { plainVerdict, type SessionInfo } from "@/lib/plain-lang";
+import { plainVerdict } from "@/lib/plain-lang";
+import type { SessionInfo } from "@/lib/schedule";
+import { TF_DURATION_SECONDS } from "@/lib/paper";
 import { Card, CardContent } from "@/components/ui/card";
 import EntryBanner from "./EntryBanner";
 import type { DemoSignal } from "@/lib/demo-data";
@@ -22,7 +24,16 @@ interface SimpleBoardProps {
   sessao: SessionInfo;
 }
 
-const ENTRY_WINDOW_SECONDS = 5 * 60;
+/** Prazo de validade do sinal: vale p/ a vela seguinte do próprio timeframe. */
+function deadlineFor(sig: DemoSignal): number {
+  return sig.ts + (TF_DURATION_SECONDS[sig.timeframe] ?? 300);
+}
+
+function fmtCountdown(secs: number): string {
+  const m = Math.floor(secs / 60);
+  const s = Math.floor(secs % 60);
+  return `${m}m ${String(s).padStart(2, "0")}s`;
+}
 
 const KIND_META = {
   call: { badge: "border-call/60 bg-call/15 text-call", icon: <TrendingUp className="size-4" />, bar: "#22c55e" },
@@ -45,8 +56,8 @@ export default function SimpleBoard({ snapshots, signals, banca, riscoPct, sessa
 
   return (
     <div className="space-y-4">
-      {/* Instrução de entrada com prazo (CALL/PUT + 5 min + countdown) */}
-      <EntryBanner signal={activeSignal} />
+      {/* Instrução de entrada com prazo (CALL/PUT + timer + valor + expiração) */}
+      <EntryBanner signal={activeSignal} banca={banca} riscoPct={riscoPct} />
       {/* Como operar — resumo em linguagem simples */}
       <Card className="border-border bg-card">
         <CardContent className="grid gap-3 pt-5 sm:grid-cols-2 xl:grid-cols-4">
@@ -63,13 +74,17 @@ export default function SimpleBoard({ snapshots, signals, banca, riscoPct, sessa
                 />
                 <span className={`relative inline-flex size-1.5 rounded-full ${sessao.active ? "bg-call" : "bg-warn"}`} />
               </span>
-              {sessao.active ? "SESSÃO ATIVA" : "FORA DA SESSÃO"}
+              {sessao.active ? "MERCADO ABERTO" : "MERCADO FECHADO"}
             </span>
             <div className="text-sm leading-relaxed text-muted-foreground">
-              <span className="font-medium text-foreground">Horário de operar:</span> {sessao.windowUtc} (
-              {sessao.windowBrt}) — sinais só são gerados nessa janela.
-              {!sessao.active && sessao.nextStartBrt && (
-                <span className="text-warn"> Próxima sessão às {sessao.nextStartBrt} (Brasília).</span>
+              <span className="font-medium text-foreground">Horário de operar:</span> {sessao.windowBrt} — fora dessas
+              janelas o radar pausa e não gasta cota da API.
+              {!sessao.active && sessao.nextStartDayPt && (
+                <span className="text-warn">
+                  {" "}
+                  Agora fechado — próxima abertura {sessao.nextStartDayPt} às {sessao.nextStartBrt} (Brasília /{" "}
+                  {sessao.nextStartUtc} UTC).
+                </span>
               )}
             </div>
           </div>
@@ -109,7 +124,9 @@ export default function SimpleBoard({ snapshots, signals, banca, riscoPct, sessa
           const v = plainVerdict(s.engine, s.pack, s.asset.symbol);
           const meta = KIND_META[v.kind];
           const assetSignal = signals.find((sig) => sig.symbol === s.asset.symbol && sig.result === "pending");
-          const deadline = assetSignal ? assetSignal.ts + ENTRY_WINDOW_SECONDS : null;
+          const deadline = assetSignal ? deadlineFor(assetSignal) : null;
+          const signalLeft = assetSignal && deadline ? Math.max(0, deadline - now) : 0;
+          const signalOver = assetSignal && deadline ? now > deadline : false;
           return (
             <Link key={s.asset.symbol} href={`/app/ativo/${encodeURIComponent(s.asset.symbol)}`} className="group">
               <Card className="h-full border-border bg-card transition-colors group-hover:border-info/60">
@@ -157,16 +174,16 @@ export default function SimpleBoard({ snapshots, signals, banca, riscoPct, sessa
                   {/* Resumo em linguagem simples */}
                   <p className="text-sm leading-relaxed text-muted-foreground">{v.summary}</p>
 
-                  {/* Prazo do sinal deste ativo */}
+                  {/* Prazo do sinal deste ativo (timer vivo) */}
                   {assetSignal && deadline && (
                     <p
                       className={`rounded-md px-2.5 py-1.5 text-xs font-medium ${
-                        now > deadline ? "bg-put/10 text-put" : "bg-call/10 text-call"
+                        signalOver ? "bg-put/10 text-put" : signalLeft <= 60 ? "bg-warn/10 text-warn" : "bg-call/10 text-call"
                       }`}
                     >
-                      {now > deadline
-                        ? `⏰ ${s.asset.symbol}: passou do horário — espere o próximo sinal`
-                        : `▶ ${s.asset.symbol}: ${assetSignal.direction} até ${format(new Date(deadline * 1000), "HH:mm:ss")} (seu horário)`}
+                      {signalOver
+                        ? `⏰ ${s.asset.symbol}: passou do horário — NÃO opere, espere o próximo sinal`
+                        : `▶ ${s.asset.symbol}: ${assetSignal.direction} — falta ${fmtCountdown(signalLeft)} p/ entrar (até ${format(new Date(deadline * 1000), "HH:mm:ss")})`}
                     </p>
                   )}
                 </CardContent>

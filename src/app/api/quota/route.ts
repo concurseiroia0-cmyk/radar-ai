@@ -1,20 +1,15 @@
 import { NextResponse } from "next/server";
+import { creditsEstimateToday } from "@/lib/schedule";
 
 /**
  * GET /api/quota — cota CONCEITUAL (exibição no topo).
- * Twelve Data free: 800 requisições/dia. Cron a cada 2 min × 6 ativos
- * dentro da janela de sessão (7–12 UTC) ≈ dentro do limite.
+ * Twelve Data free: 800 requisições/dia. O cron só consome cota dentro das
+ * janelas de mercado (IQ Option p/ forex; NYSE p/ ações — src/lib/schedule.ts),
+ * 1 requisição por ativo a cada 5 min.
  */
 export async function GET() {
   const now = new Date();
-  const dayStart = new Date(now);
-  dayStart.setUTCHours(0, 0, 0, 0);
-
-  const runs = Math.max(0, Math.floor((now.getTime() - dayStart.getTime()) / (2 * 60 * 1000)));
-  const hour = now.getUTCHours();
-  const inSession = hour >= 7 && hour < 12;
-  const perRun = inSession ? 6 : 0; // 6 ativos dentro da sessão; 0 fora (cron pula)
-  const used = Math.min(800, runs * perRun);
+  const used = creditsEstimateToday(now, { forex: 10, stock: 3 });
 
   return NextResponse.json({
     date: now.toISOString().slice(0, 10),
@@ -22,6 +17,6 @@ export async function GET() {
     remaining: Math.max(0, 800 - used),
     source: "twelvedata",
     concept: true,
-    note: "Valor conceitual — Twelve Data free oferece 800 créditos/dia (8/min). Cron a cada 2 min dentro da sessão 7–12 UTC cabe no plano.",
+    note: "Valor conceitual — Twelve Data free oferece 800 créditos/dia (8/min). Cron consome apenas dentro das janelas IQ Option (forex) e NYSE (ações).",
   });
 }

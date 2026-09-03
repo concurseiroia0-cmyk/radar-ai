@@ -2,7 +2,7 @@ import RadarDashboard from "@/components/radar/RadarDashboard";
 import AutoRefresh from "@/components/app/AutoRefresh";
 import { getRadarData } from "@/lib/data-access";
 import { getProfile } from "@/lib/actions/profile";
-import { sessionInfo } from "@/lib/plain-lang";
+import { marketSession } from "@/lib/schedule";
 
 export const dynamic = "force-dynamic";
 
@@ -11,9 +11,8 @@ export default async function DashboardPage() {
 
   const banca = profile?.banca ?? 500;
   const riscoPct = profile?.risco_pct ?? 1;
-  const sessaoInicio = profile?.sessao_inicio ?? 7;
-  const sessaoFim = profile?.sessao_fim ?? 12;
-  const sessao = sessionInfo(sessaoInicio, sessaoFim);
+  // mercado aberto/fechado pelos horários IQ Option (forex) + NYSE (ações)
+  const sessao = marketSession("all");
 
   return (
     <div className="space-y-6">

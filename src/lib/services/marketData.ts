@@ -67,8 +67,11 @@ export async function fetchCandlesFinnhub(
 ): Promise<Candle[] | null> {
   const key = process.env.FINNHUB_KEY;
   if (!key) return null;
-  const oanda = symbol.replace("/", "_");
-  const url = `https://finnhub.io/api/v1/stock/candle?symbol=OANDA:${oanda}&resolution=${resolution}&count=${count}&token=${key}`;
+  const isFx = symbol.includes("/");
+  // forex/commodities na Finnhub vivem sob o prefixo OANDA: (ex.: OANDA:EUR_USD);
+  // ações dos EUA (AAPL, TSLA…) usam o símbolo direto.
+  const query = isFx ? `OANDA:${symbol.replace("/", "_")}` : symbol;
+  const url = `https://finnhub.io/api/v1/stock/candle?symbol=${query}&resolution=${resolution}&count=${count}&token=${key}`;
   try {
     const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(TIMEOUT_MS) });
     if (!res.ok) return null;

@@ -6,15 +6,19 @@ import { buildPayload } from "@/lib/ai/payload";
 import { runConsensus, aiAvailable } from "@/lib/ai/consensus";
 import { formatAlert, sendTelegramMessage } from "@/lib/services/telegram";
 import { resolveExpired } from "@/lib/services/paperResolution";
+import { marketOpen } from "@/lib/schedule";
+import { ACTIVE_SYMBOLS } from "@/lib/assets";
 
 /**
  * CRON — heartbeat do sistema (chamar via cron-job.org a cada 2 min).
  * Protegido por CRON_SECRET (header x-cron-secret ou ?secret=).
  *
  * Fluxo:
- *  1. ler configurações (sessao_inicio/fim, score_minimo, ativos)
- *  2. fora da janela de sessão → { skipped: 'outside_session' } (economiza quota)
- *  3. buscar últimos ~200 candles 1m por ativo ATIVO (Twelve Data → Finnhub)
+ *  1. ler configurações (score_minimo, ativos)
+ *  2. janela de mercado por tipo (src/lib/schedule.ts): forex segue os
+ *     horários da IQ Option em UTC; ações dos EUA seguem o pregão da NYSE.
+ *     Fora da janela NÃO busca candles (economiza cota da API).
+ *  3. buscar últimos candles 1m por ativo ATIVO e aberto (Twelve Data → Finnhub)
  *  4. upsert candles (asset_id, '1m', ts) — sem duplicados
  *  5. agregar 1m -> 5m e 1m -> 15m (só blocos completos)
  *  6. gatilho: SÓ processa quando um candle 5m FOI FECHADO (cron_state)
@@ -22,9 +26,13 @@ import { resolveExpired } from "@/lib/services/paperResolution";
  *  8. se valid AND score >= score_minimo → grava signals (pending)
  *  9. IA + consenso (se chave configurada) → ai_consensus/ai_pass + ai_analyses
  * 10. consenso válido → alerta Telegram
- * 11. resolver sinais/paper_trades expirados
+ * 11. resolver sinais/paper_trades expirados (roda SEMPRE — não usa cota)
  * 12. try/catch por ativo (um falha não quebra os outros)
  */
+
+/** Lista padrão quando o perfil ainda não tem ativos (mesma da Config/seed). */
+const DEFAULT_ATIVOS = ACTIVE_SYMBOLS;
+
 export async function POST(req: Request) {
   // ---- segurança ----
   const secret = process.env.CRON_SECRET;
@@ -51,49 +59,59 @@ export async function POST(req: Request) {
   }
 
   // ---- 1) configurações ----
-  const { data: profRows } = await supabase.from("profiles").select("*").limit(1);
-  const prof = (profRows ?? [])[0] as
-    | { sessao_inicio?: number; sessao_fim?: number; score_minimo?: number; ativos_ativos?: string[] }
-    | undefined;
-  const sessaoInicio = Number(prof?.sessao_inicio ?? process.env.SESSION_START ?? 7);
-  const sessaoFim = Number(prof?.sessao_fim ?? process.env.SESSION_END ?? 12);
+  const { data: profRows } = await supabase.from("profiles").select("score_minimo, ativos_ativos").limit(1);
+  const prof = (profRows ?? [])[0] as { score_minimo?: number; ativos_ativos?: string[] } | undefined;
   const scoreMin = Number(prof?.score_minimo ?? process.env.DEFAULT_SCORE_MIN ?? 75);
-  const ativos = prof?.ativos_ativos?.length ? prof.ativos_ativos : [
-    "EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "EUR/JPY", "GBP/JPY",
-  ];
-  // atenção à cota do provedor: N ativos × chamadas por dia ≤ cota gratuita.
+  const ativos = prof?.ativos_ativos?.length ? prof.ativos_ativos : DEFAULT_ATIVOS;
+  // atenção à cota do provedor: N ativos × chamadas por dia ≤ cota gratuita —
+  // as janelas abaixo já eliminam as chamadas fora do horário de mercado.
 
-  // ---- 2) janela de sessão (UTC) ----
+  // ---- 2) janela de mercado (horários IQ Option em UTC — src/lib/schedule.ts) ----
   const now = new Date();
-  const hour = now.getUTCHours();
-  const outsideSession =
-    sessaoFim > sessaoInicio ? hour < sessaoInicio || hour >= sessaoFim : hour < sessaoInicio && hour >= sessaoFim;
-  if (outsideSession) {
+  const forexOpen = marketOpen("forex", now, 150);
+  const stockOpen = marketOpen("stock", now, 150);
+
+  // ---- assets ativos no banco ----
+  const { data: assetRows } = await supabase.from("assets").select("id, symbol, type").eq("active", true);
+  const assets = (assetRows ?? []).filter((a) => ativos.includes(a.symbol));
+
+  // Resolução de sinais/paper expirados roda SEMPRE (não consome cota de dados):
+  // um trade que venceu fora da janela resolve no próximo tick, mesmo sábado.
+  let paperResolvedGlobal = 0;
+  try {
+    const resolved = await resolveExpired(supabase);
+    paperResolvedGlobal = resolved.signalsResolved + resolved.paperResolved;
+  } catch {
+    // erro de resolução não derruba o resto do cron
+  }
+
+  if (!forexOpen && !stockOpen) {
     return NextResponse.json({
       ok: true,
       skipped: "outside_session",
       processed: 0,
       signalsCreated: 0,
-      session: { inicio: sessaoInicio, fim: sessaoFim, hora: hour },
+      paperResolved: paperResolvedGlobal,
+      windows: { forex: forexOpen, stock: stockOpen },
     });
   }
-
-  // ---- assets ativos no banco ----
-  const { data: assetRows } = await supabase.from("assets").select("id, symbol").eq("active", true);
-  const assets = (assetRows ?? []).filter((a) => ativos.includes(a.symbol));
 
   const summary = {
     ok: true as boolean,
     processed: 0,
     signalsCreated: 0,
     alertsSent: 0,
-    paperResolved: 0,
+    paperResolved: paperResolvedGlobal,
     errors: [] as string[],
-    quota: { source: "twelvedata", used: assets.length, remainingConcept: 800 - assets.length },
+    windows: { forex: forexOpen, stock: stockOpen },
   };
 
   for (const asset of assets) {
     try {
+      // ---- 2b) ativo fora da janela do próprio tipo? pula (economiza cota) ----
+      const isStock = asset.type === "stock";
+      if (isStock ? !stockOpen : !forexOpen) continue;
+
       // ---- 3/4) fetch + upsert 1m/5m/15m ----
       // Histórico profundo: o motor exige >= 60 candles 5m (300 de 1m).
       // Com ~2000 de 1m temos ~400 de 5m e ~133 de 15m (lookback real).
@@ -216,6 +234,7 @@ export async function POST(req: Request) {
           confluencesPassed: passedConfluences,
           consensus,
           entryPrice: engine.entryPrice,
+          createdAt: new Date(),
         });
         const sent = await sendTelegramMessage(text);
         if (sent.ok) summary.alertsSent++;
@@ -223,14 +242,6 @@ export async function POST(req: Request) {
     } catch (e) {
       summary.errors.push(`${asset.symbol}: ${String(e).slice(0, 120)}`);
     }
-  }
-
-  // ---- 11) resolução de expirados ----
-  try {
-    const resolved = await resolveExpired(supabase);
-    summary.paperResolved = resolved.signalsResolved + resolved.paperResolved;
-  } catch (e) {
-    summary.errors.push(`resolução: ${String(e).slice(0, 120)}`);
   }
 
   return NextResponse.json(summary);

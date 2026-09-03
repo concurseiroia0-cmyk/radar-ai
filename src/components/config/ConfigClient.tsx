@@ -12,8 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-
-const ALL_ASSETS = ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "EUR/JPY", "GBP/JPY"];
+import { FOREX_SYMBOLS, STOCK_SYMBOLS } from "@/lib/assets";
 
 interface ConfigClientProps {
   initial: ProfileData;
@@ -94,7 +93,7 @@ export default function ConfigClient({ initial, demo }: ConfigClientProps) {
       <TabsList className="mb-4 flex-wrap h-auto">
         <TabsTrigger value="risco">Risco</TabsTrigger>
         <TabsTrigger value="radar">Radar</TabsTrigger>
-        <TabsTrigger value="sessao">Sessão</TabsTrigger>
+        <TabsTrigger value="sessao">Horários</TabsTrigger>
         <TabsTrigger value="telegram">Telegram</TabsTrigger>
         <TabsTrigger value="apis">APIs</TabsTrigger>
         <TabsTrigger value="noticias">Notícias</TabsTrigger>
@@ -160,17 +159,28 @@ export default function ConfigClient({ initial, demo }: ConfigClientProps) {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-2 sm:grid-cols-2">
-              {ALL_ASSETS.map((a) => (
-                <div key={a} className="flex items-center justify-between rounded-lg border border-border bg-surface px-3 py-2">
-                  <span className="text-sm font-medium">{a}</span>
-                  <Switch
-                    checked={profile.ativos_ativos.includes(a)}
-                    onCheckedChange={() => toggleAsset(a)}
-                  />
+            {[
+              { title: "Forex — janela IQ Option", symbols: FOREX_SYMBOLS },
+              { title: "Ações EUA — pregão NYSE", symbols: STOCK_SYMBOLS },
+            ].map((group) => (
+              <div key={group.title} className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{group.title}</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {group.symbols.map((a) => (
+                    <div
+                      key={a}
+                      className="flex items-center justify-between rounded-lg border border-border bg-surface px-3 py-2"
+                    >
+                      <span className="text-sm font-medium">{a}</span>
+                      <Switch
+                        checked={profile.ativos_ativos.includes(a)}
+                        onCheckedChange={() => toggleAsset(a)}
+                      />
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label>Score mínimo p/ alerta (default 75)</Label>
@@ -190,46 +200,30 @@ export default function ConfigClient({ initial, demo }: ConfigClientProps) {
         </Card>
       </TabsContent>
 
-      {/* ---------------- SESSÃO ---------------- */}
+      {/* ---------------- HORÁRIOS ---------------- */}
       <TabsContent value="sessao">
         <Card className="border-border bg-card">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-sm">
-              <Timer className="size-4 text-info" /> Sessão (economiza quota)
+              <Timer className="size-4 text-info" /> Horários de mercado (fixos — economiza cota)
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label>Início (hora 0–23, UTC)</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  max={23}
-                  value={profile.sessao_inicio}
-                  onChange={(e) => setProfile({ ...profile, sessao_inicio: Number(e.target.value) || 0 })}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Fim (hora 0–23, UTC)</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  max={23}
-                  value={profile.sessao_fim}
-                  onChange={(e) => setProfile({ ...profile, sessao_fim: Number(e.target.value) || 0 })}
-                />
-              </div>
+          <CardContent className="space-y-4 text-sm leading-relaxed text-muted-foreground">
+            <div>
+              <p className="font-medium text-foreground">Forex — horário da IQ Option (UTC)</p>
+              <p className="mt-0.5">Seg–Qui 00:00–15:30 e 22:00–23:59 · Sex 00:00–15:30 · Dom 22:00–23:59 · Sáb fechado.</p>
+              <p className="mt-0.5">
+                = no Brasil: Seg–Qui 00h–12h30 e 19h–20h59 · Sex 00h–12h30 · Dom 19h–20h59.
+              </p>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Default 7–12 (overlap Londres/NY). Fora da janela o cron não consome cota de dados.
+            <div>
+              <p className="font-medium text-foreground">Ações EUA (AAPL, TSLA, NVDA)</p>
+              <p className="mt-0.5">Seg–Sex 09h30–16h00 em Nova York (horário de verão americano incluso).</p>
+            </div>
+            <p>
+              O Radar só busca candles e gera sinais dentro dessas janelas — fora delas não consome cota da API e a
+              página avisa quando o mercado reabre.
             </p>
-            <Button
-              onClick={() => save({ sessao_inicio: profile.sessao_inicio, sessao_fim: profile.sessao_fim }, "Sessão atualizada")}
-              disabled={saving}
-            >
-              {saving && <Loader2 className="size-4 animate-spin" />} Salvar sessão
-            </Button>
           </CardContent>
         </Card>
       </TabsContent>

@@ -9,6 +9,7 @@ import type {
 } from "@/lib/engine";
 import { aggregateTo, buildIndicatorPack, runEngine } from "@/lib/engine";
 import { runBacktest, type BacktestRunResult } from "@/lib/backtest/runner";
+import { RADAR_ASSETS } from "@/lib/assets";
 
 /**
  * MODO DEMONSTRAÇÃO — dados 100% sintéticos e DETERMINÍSTICOS (seed por símbolo),
@@ -23,14 +24,12 @@ export interface DemoAsset {
   type: string;
 }
 
-export const DEMO_ASSETS: DemoAsset[] = [
-  { symbol: "EUR/USD", active: true, type: "forex" },
-  { symbol: "GBP/USD", active: true, type: "forex" },
-  { symbol: "USD/JPY", active: true, type: "forex" },
-  { symbol: "AUD/USD", active: true, type: "forex" },
-  { symbol: "EUR/JPY", active: true, type: "forex" },
-  { symbol: "GBP/JPY", active: true, type: "forex" },
-];
+/** Catálogo único (src/lib/assets.ts) — demo usa os mesmos símbolos/ordem. */
+export const DEMO_ASSETS: DemoAsset[] = RADAR_ASSETS.map((a) => ({
+  symbol: a.symbol,
+  active: true,
+  type: a.type,
+}));
 
 const BASE_PRICE: Record<string, number> = {
   "EUR/USD": 1.0842,
@@ -39,6 +38,14 @@ const BASE_PRICE: Record<string, number> = {
   "AUD/USD": 0.6612,
   "EUR/JPY": 162.03,
   "GBP/JPY": 190.06,
+  "EUR/GBP": 0.852,
+  "USD/CHF": 0.855,
+  "AUD/JPY": 96.5,
+  "USD/CAD": 1.365,
+  "XAU/USD": 2350,
+  AAPL: 228.5,
+  TSLA: 246,
+  NVDA: 128,
 };
 
 const BASE_TS = Math.floor(Date.now() / 1000) - 7 * 86400;

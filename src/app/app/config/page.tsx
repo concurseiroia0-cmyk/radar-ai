@@ -1,6 +1,7 @@
 import ConfigClient from "@/components/config/ConfigClient";
 import { getProfile } from "@/lib/actions/profile";
 import { isSupabaseConfigured } from "@/lib/services/supabase-server";
+import { ACTIVE_SYMBOLS } from "@/lib/assets";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,7 @@ export default async function ConfigPage() {
     score_minimo: 75,
     sessao_inicio: 7,
     sessao_fim: 12,
-    ativos_ativos: ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "EUR/JPY", "GBP/JPY"],
+    ativos_ativos: [...ACTIVE_SYMBOLS],
     telegram_configured: false,
     apis: {
       twelvedata: false,
