@@ -25,6 +25,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const TFS: Timeframe[] = ["1m", "5m", "15m"];
 
+/** Duração de cada timeframe (alinhada ao fechamento das velas). */
+const CANDLE_SECONDS: Record<Timeframe, number> = {
+  "1m": 60,
+  "5m": 300,
+  "15m": 900,
+};
+
 export default async function AssetPage({
   params,
   searchParams,
@@ -91,7 +98,12 @@ export default async function AssetPage({
             </div>
           </div>
         </div>
-        <AutoRefresh intervalMs={15000} />
+        {/* 15s de atualização + countdown até a próxima vela do timeframe selecionado */}
+        <AutoRefresh
+          intervalMs={15000}
+          candleSeconds={data.demo || sessao.active ? CANDLE_SECONDS[timeframe] : undefined}
+          candleLabel={timeframe}
+        />
         <div className="flex gap-1 rounded-lg border border-border bg-surface p-1">
           {TFS.map((t) => (
             <Link
