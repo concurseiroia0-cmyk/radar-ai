@@ -70,16 +70,16 @@ export default function ConfigClient({ initial, demo }: ConfigClientProps) {
     save({ ativos_ativos: next }, "Radar atualizado");
   };
 
-  const testTelegram = async () => {
+  const testTelegram = async (full = false) => {
     setTesting(true);
     try {
       const res = await fetch("/api/telegram/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chatId: profile.telegram_chat_id || undefined }),
+        body: JSON.stringify({ chatId: profile.telegram_chat_id || undefined, full }),
       });
       const json = (await res.json()) as { ok?: boolean; error?: string };
-      if (json.ok) toast.success("✅ Teste enviado — verifique seu Telegram");
+      if (json.ok) toast.success("✅ Enviado — verifique seu Telegram");
       else toast.error(json.error ?? "Falha no teste");
     } catch {
       toast.error("Erro de rede");
@@ -257,9 +257,13 @@ export default function ConfigClient({ initial, demo }: ConfigClientProps) {
               <Button onClick={() => save({ telegram_chat_id: profile.telegram_chat_id }, "Chat ID salvo")} disabled={saving}>
                 {saving && <Loader2 className="size-4 animate-spin" />} Salvar
               </Button>
-              <Button variant="outline" onClick={testTelegram} disabled={testing}>
+              <Button variant="outline" onClick={() => testTelegram(false)} disabled={testing}>
                 {testing ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
                 Testar Conexão
+              </Button>
+              <Button variant="outline" onClick={() => testTelegram(true)} disabled={testing}>
+                {testing ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+                Alerta de exemplo
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">

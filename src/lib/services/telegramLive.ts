@@ -10,7 +10,7 @@
  * Não cria tabela nova: os metadados vivem no ai_consensus do sinal.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { getTelegramConfig, editTelegramMessage } from "./telegram";
+import { getTelegramConfig, editTelegramMessage, fmtBrClock } from "./telegram";
 import { TF_DURATION_SECONDS } from "@/lib/paper";
 
 interface TgMeta {
@@ -22,9 +22,13 @@ interface TgMeta {
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
-function fmtClock(sec: number): string {
+function fmtUtcClock(sec: number): string {
   const d = new Date(sec * 1000);
   return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
+}
+
+function fmtClockBrt(sec: number): string {
+  return fmtBrClock(new Date(sec * 1000));
 }
 
 function fmtLeft(secs: number): string {
@@ -36,11 +40,11 @@ function fmtLeft(secs: number): string {
 /** Linha de status com o countdown (substitui a linha "⏳ Entre até…"). */
 export function liveCountdownLine(remaining: number, deadlineSec: number): string {
   if (remaining <= 0) {
-    return `⏰ *SINAL EXPIRADO* (era até ${fmtClock(deadlineSec)} UTC) — *NÃO opere mais nele*. Espere o próximo.`;
+    return `⏰ *SINAL EXPIRADO* (era até ${fmtClockBrt(deadlineSec)} (Brasília) / ${fmtUtcClock(deadlineSec)} UTC) — *NÃO opere mais nele*. Espere o próximo.`;
   }
   return (
-    `⏳ *Faltam ${fmtLeft(remaining)}* p/ o sinal expirar (até ${fmtClock(deadlineSec)} UTC) — ` +
-    `depois disso *NÃO é recomendado operar*.`
+    `⏳ *Faltam ${fmtLeft(remaining)}* p/ o sinal expirar (até ${fmtClockBrt(deadlineSec)} (Brasília) / ` +
+    `${fmtUtcClock(deadlineSec)} UTC) — depois disso *NÃO é recomendado operar*.`
   );
 }
 

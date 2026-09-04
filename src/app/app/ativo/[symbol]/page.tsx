@@ -142,7 +142,9 @@ export default async function AssetPage({
           }`}
         >
           {sessao.active
-            ? `Mercado aberto (${sessao.windowBrt}) — candles novos entram a cada ~2 min, página atualiza sozinha.`
+            ? `Mercado aberto (${sessao.windowBrt}) — candles novos entram a cada ~2 min, página atualiza sozinha${
+                sessao.nextCloseBrt ? `. Janela fecha às ${sessao.nextCloseBrt} (Brasília).` : ""
+              }`
             : `Mercado fechado agora (${sessao.windowBrt}) — o gráfico fica parado porque não buscamos candles fora do horário${
                 sessao.nextStartDayPt
                   ? `. Próxima abertura ${sessao.nextStartDayPt} às ${sessao.nextStartBrt} (Brasília / ${sessao.nextStartUtc} UTC).`

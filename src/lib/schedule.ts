@@ -155,6 +155,37 @@ export interface SessionInfo {
   nextStartBrt: string | null;
   nextStartUtc: string | null;
   nextStartDayPt: string | null;
+  /** Fechamento da janela ATUAL (unix s + rótulos BRT/UTC) — quando aberto. */
+  nextCloseTs: number | null;
+  nextCloseBrt: string | null;
+  nextCloseUtc: string | null;
+}
+
+/** Fim (ms) do segmento forex atualmente aberto — ou null se fechado. */
+function forexSegmentEndMs(now: Date): number | null {
+  const b = new Date(now.getTime() - 3 * 3600_000); // relógio de Brasília
+  const minutes = b.getUTCHours() * 60 + b.getUTCMinutes();
+  const day = b.getUTCDay();
+  for (const [s, e] of FX_BRT_MIN[day] ?? []) {
+    if (minutes >= s && minutes <= e) {
+      // janela vai até o fim do minuto `e` (ex.: 15:30:59) → fecha 1 min depois
+      return (
+        Date.UTC(b.getUTCFullYear(), b.getUTCMonth(), b.getUTCDate(), Math.floor(e / 60), (e % 60) + 1) +
+        3 * 3600_000
+      );
+    }
+  }
+  return null;
+}
+
+/** Fim (ms) do pregão NYSE atualmente aberto — ou null se fechado. */
+function stockCloseMs(now: Date): number | null {
+  const ny = nyClock(now);
+  if (!(ny.dow >= 1 && ny.dow <= 5 && ny.minutes >= 9 * 60 + 30 && ny.minutes <= 16 * 60)) return null;
+  const utcNowMin = Math.floor(now.getTime() / 60_000);
+  const offsetMin = ((utcNowMin - ny.minutes) % 1440 + 1440) % 1440;
+  const dayStartMs = Math.floor(now.getTime() / 86_400_000) * 86_400_000;
+  return dayStartMs + (16 * 60 + 1 + offsetMin) * 60_000;
 }
 
 /**
@@ -176,6 +207,12 @@ export function marketSession(type: MarketType | "all" = "all", now: Date = new 
         })()
       : nextMarketOpen(type, now);
 
+  // qual mercado está comandando o status "aberto" (p/ avisar o fechamento)
+  const activeType: MarketType | null =
+    type === "all" ? (forexOpen ? "forex" : stockOpen ? "stock" : null) : active ? type : null;
+  const closeMs = activeType === "forex" ? forexSegmentEndMs(now) : activeType === "stock" ? stockCloseMs(now) : null;
+  const closeDate = closeMs ? new Date(closeMs) : null;
+
   return {
     active,
     forexOpen,
@@ -186,6 +223,9 @@ export function marketSession(type: MarketType | "all" = "all", now: Date = new 
     nextStartBrt: next ? fmtBrtTime(next) : null,
     nextStartUtc: next ? fmtUtcTime(next) : null,
     nextStartDayPt: next ? DAY_PT[brClock(next).dow] : null,
+    nextCloseTs: closeDate ? Math.floor(closeDate.getTime() / 1000) : null,
+    nextCloseBrt: closeDate ? fmtBrtTime(closeDate) : null,
+    nextCloseUtc: closeDate ? fmtUtcTime(closeDate) : null,
   };
 }
 

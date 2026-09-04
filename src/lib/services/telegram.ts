@@ -99,6 +99,13 @@ function fmtUtcClock(d: Date): string {
   return `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
 }
 
+/** Hora em Brasília (UTC−3 fixo) — exibida nos alertas. */
+export function fmtBrClock(d: Date): string {
+  const brt = new Date(d.getTime() - 3 * 3600_000);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(brt.getUTCHours())}:${p(brt.getUTCMinutes())}:${p(brt.getUTCSeconds())}`;
+}
+
 const DIR_EMOJI: Record<Direction, string> = { CALL: "🟢", PUT: "🔴", NEUTRAL: "⚪" };
 
 /**
@@ -137,7 +144,9 @@ export function formatAlert(o: AlertOptions): string {
     `⏱️ Expiração sugerida: *${o.timeframe === "15m" ? "15" : o.timeframe === "1m" ? "1" : "5"} minutos*`,
     ...(o.createdAt
       ? [
-          `⏳ *Entre até* ${fmtUtcClock(new Date(o.createdAt.getTime() + 5 * 60_000))} UTC — depois desse horário o sinal expira e *NÃO é recomendado operar* nele.`,
+          `⏳ *Entre até* ${fmtBrClock(new Date(o.createdAt.getTime() + 5 * 60_000))} (Brasília) / ${fmtUtcClock(
+            new Date(o.createdAt.getTime() + 5 * 60_000)
+          )} UTC — depois desse horário o sinal expira e *NÃO é recomendado operar* nele.`,
         ]
       : []),
     "",

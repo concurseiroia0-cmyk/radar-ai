@@ -35,6 +35,13 @@ function fmtCountdown(secs: number): string {
   return `${m}m ${String(s).padStart(2, "0")}s`;
 }
 
+function fmtOpenLeft(secs: number): string {
+  if (secs <= 0) return "agora";
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  return h > 0 ? `${h}h ${String(m).padStart(2, "0")}m` : fmtCountdown(secs);
+}
+
 const KIND_META = {
   call: { badge: "border-call/60 bg-call/15 text-call", icon: <TrendingUp className="size-4" />, bar: "#22c55e" },
   put: { badge: "border-put/60 bg-put/15 text-put", icon: <TrendingDown className="size-4" />, bar: "#ef4444" },
@@ -79,6 +86,12 @@ export default function SimpleBoard({ snapshots, signals, banca, riscoPct, sessa
             <div className="text-sm leading-relaxed text-muted-foreground">
               <span className="font-medium text-foreground">Horário de operar:</span> {sessao.windowBrt} — fora dessas
               janelas o radar pausa e não gasta cota da API.
+              {sessao.active && sessao.nextCloseTs !== null && (
+                <span className="mt-1 block text-info">
+                  ⏱️ Janela atual fecha às {sessao.nextCloseBrt} (Brasília / {sessao.nextCloseUtc} UTC) — falta{" "}
+                  <strong className="tabular-nums">{fmtOpenLeft(sessao.nextCloseTs - now)}</strong> de mercado aberto.
+                </span>
+              )}
               {!sessao.active && sessao.nextStartDayPt && (
                 <span className="text-warn">
                   {" "}
