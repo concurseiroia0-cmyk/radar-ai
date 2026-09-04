@@ -95,12 +95,11 @@ export async function POST(req: Request) {
     forex: assets.filter((a) => a.type !== "stock").length,
     stock: assets.filter((a) => a.type === "stock").length,
   };
-  const tickMin = Math.max(1, Math.round((Number(process.env.CRON_INTERVAL ?? 120) || 120) / 60));
-  const td = tdPlan(now, counts, tickMin);
   // cadência opcional: TWELVEDATA_POLL_MIN=2 (padrão, todos a cada tick) ou
-  // maior (ex.: 6) p/ economizar cota — os ativos são divididos em grupos.
+  // maior (ex.: 6) p/ as 3 chaves cobrirem o dia inteiro — ativos em grupos.
   const pollMin = Math.max(2, Math.round(Number(process.env.TWELVEDATA_POLL_MIN ?? 2) || 2));
   const pollGroups = Math.max(1, Math.round(pollMin / 2));
+  const td = tdPlan(now, counts, pollMin); // estimativa de cota na mesma cadência do polling
 
   // Resolução de sinais/paper expirados roda SEMPRE (não consome cota de dados):
   // um trade que venceu fora da janela resolve no próximo tick, mesmo sábado.

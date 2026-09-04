@@ -10,7 +10,7 @@ import { tdPlan } from "@/lib/services/marketData";
  */
 export async function GET() {
   const now = new Date();
-  const plan = tdPlan(now, { forex: 11, stock: 3 });
+  const plan = tdPlan(now, { forex: 11, stock: 3 }, Number(process.env.TWELVEDATA_POLL_MIN ?? 2) || 2);
 
   return NextResponse.json({
     date: now.toISOString().slice(0, 10),

@@ -35,7 +35,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       if (s.includes("/")) counts.forex++;
       else counts.stock++;
     }
-    const plan = tdPlan(new Date(), counts);
+    const plan = tdPlan(new Date(), counts, Number(process.env.TWELVEDATA_POLL_MIN ?? 2) || 2);
     quota = {
       date: new Date().toISOString().slice(0, 10),
       used: plan.usedToday,
