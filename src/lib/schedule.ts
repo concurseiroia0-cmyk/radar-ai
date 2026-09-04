@@ -250,20 +250,6 @@ export function openMinutesElapsedToday(type: MarketType, now: Date = new Date()
 }
 
 /**
- * Minutos TOTAIS de hoje (dia UTC inteiro, passado + futuro) em que o mercado
- * do tipo fica aberto — usado para escolher a cadência sustentável do dia.
- */
-export function totalOpenMinutesToday(type: MarketType, now: Date = new Date()): number {
-  const dayStartMs = Math.floor(now.getTime() / 86_400_000) * 86_400_000;
-  const endMs = dayStartMs + 86_400_000;
-  let total = 0;
-  for (let t = dayStartMs; t < endMs; t += 60_000) {
-    if (marketOpen(type, new Date(t))) total++;
-  }
-  return total;
-}
-
-/**
  * Estimativa conceitual de créditos de dados gastos hoje — 1 requisição por
  * ativo a cada `intervalMin` dentro da janela do próprio tipo, no eixo do dia
  * UTC (mesma base do reset de cota da Twelve Data). SEM teto fixo: o teto é

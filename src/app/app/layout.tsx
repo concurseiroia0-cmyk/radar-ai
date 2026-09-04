@@ -16,7 +16,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     source: string;
     keys?: number;
     activeKey?: number | null;
-    intervalMin?: number;
   } | undefined;
 
   if (!demo) {
@@ -28,8 +27,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     if (!user) redirect("/login");
     email = user.email ?? null;
 
-    // cota Twelve Data multi-chave: mesma fórmula do cron (cadência por ativo
-    // que caiba na soma das chaves; chave 1 → 2 → 3; Finnhub se esgotar).
+    // cota Twelve Data multi-chave: mesma fórmula do cron (chave 1 → 2 → 3
+    // enquanto houver cota do dia; Finnhub se esgotar).
     const profile = await getProfile();
     const counts = { forex: 0, stock: 0 };
     for (const s of profile?.ativos_ativos ?? []) {
@@ -45,7 +44,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       source: plan.exhausted ? "finnhub" : "twelvedata",
       keys: plan.keyCount,
       activeKey: plan.activeKey,
-      intervalMin: plan.intervalMin,
     };
   }
 

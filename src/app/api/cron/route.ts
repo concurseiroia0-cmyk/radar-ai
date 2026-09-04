@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { aggregateTo5m, aggregateTo15m, runEngine, buildIndicatorPack, type Candle } from "@/lib/engine";
-import { fetchCandlesFinnhub, fetchTwelveDataRotated, tdPlan, tdSlotMatches } from "@/lib/services/marketData";
+import { fetchCandlesFinnhub, fetchTwelveDataRotated, tdPlan } from "@/lib/services/marketData";
 import { createServiceSupabaseClient, isSupabaseConfigured } from "@/lib/services/supabase-server";
 import { buildPayload } from "@/lib/ai/payload";
 import { runConsensus, aiAvailable } from "@/lib/ai/consensus";
@@ -86,13 +86,15 @@ export async function POST(req: Request) {
   const { data: assetRows } = await supabase.from("assets").select("id, symbol, type").eq("active", true);
   const assets = (assetRows ?? []).filter((a) => ativos.includes(a.symbol));
 
-  // ---- plano Twelve Data do dia: cadência sustentável (intervalo por ativo
-  // que caiba na soma das 3 chaves × 800) + rotação de chaves (1 → 2 → 3).
+  // ---- estado Twelve Data: todos os ativos são buscados a cada tick (~2 min);
+  // usa TD rotacionando chave 1 → 2 → 3 até esgotar as cotas do dia e, depois,
+  // segue no Finnhub no mesmo ritmo (não deixa os sinais pararem).
   const counts = {
     forex: assets.filter((a) => a.type !== "stock").length,
     stock: assets.filter((a) => a.type === "stock").length,
   };
-  const td = tdPlan(now, counts);
+  const tickMin = Math.max(1, Math.round((Number(process.env.CRON_INTERVAL ?? 120) || 120) / 60));
+  const td = tdPlan(now, counts, tickMin);
 
   // Resolução de sinais/paper expirados roda SEMPRE (não consome cota de dados):
   // um trade que venceu fora da janela resolve no próximo tick, mesmo sábado.
@@ -131,7 +133,6 @@ export async function POST(req: Request) {
       tdUsed: td.usedToday,
       tdKeys: td.keyCount,
       tdActiveKey: td.activeKey, // 0-based — null quando todas esgotadas
-      tdIntervalMin: td.intervalMin,
       fallbackFinnhub: td.exhausted,
     },
   };
@@ -142,13 +143,7 @@ export async function POST(req: Request) {
       const isStock = asset.type === "stock";
       if (isStock ? !stockOpen : !forexOpen) continue;
 
-      // ---- 3) cadência sustentável: em modo Twelve Data cada ativo é buscado
-      // a cada td.intervalMin (grupos sobre ticks de 2 min). Fora da vez, pula
-      // este tick — o cron_state evita reprocessar quando voltar.
-      const canonicalIdx = Math.max(0, ACTIVE_SYMBOLS.indexOf(asset.symbol as string));
-      if (!td.exhausted && !tdSlotMatches(now, canonicalIdx, td.intervalMin)) continue;
-
-      // ---- 4) fetch + upsert 1m/5m/15m ----
+      // ---- 3) fetch + upsert 1m/5m/15m ----
       // Histórico profundo: o motor exige >= 60 candles 5m (300 de 1m).
       // Com ~2000 de 1m temos ~400 de 5m e ~133 de 15m (lookback real).
       // Provedor: Twelve Data (chave ativa → rotaciona 1→2→3 ao esgotar) e,
@@ -206,7 +201,19 @@ export async function POST(req: Request) {
         .select("last_5m_ts")
         .eq("asset_id", asset.id)
         .maybeSingle();
-      const lastProcessed = Number(state?.last_5m_ts ?? 0);
+      let lastProcessed = Number(state?.last_5m_ts ?? 0);
+      // AUTO-CURA: se o estado ficou com um 5m no FUTURO (candles gravados com
+      // fuso errado do provedor no passado), o gatilho travaria por horas —
+      // trata como 0 e grava o reset para destravar já no próximo tick.
+      const nowSec = Math.floor(now.getTime() / 1000);
+      if (lastProcessed > nowSec + 600) {
+        lastProcessed = 0;
+        await supabase
+          .from("cron_state")
+          .update({ last_5m_ts: 0, updated_at: new Date().toISOString() })
+          .eq("asset_id", asset.id)
+          .maybeSingle();
+      }
       if (last5mTs <= lastProcessed) continue; // nenhum 5m novo fechado
       await supabase
         .from("cron_state")

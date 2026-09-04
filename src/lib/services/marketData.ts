@@ -1,5 +1,5 @@
 import type { Candle } from "@/lib/engine";
-import { creditsEstimateToday, totalOpenMinutesToday } from "@/lib/schedule";
+import { creditsEstimateToday } from "@/lib/schedule";
 
 /**
  * Dados de mercado — Twelve Data (multi-chave, em rotação) + fallback Finnhub.
@@ -9,10 +9,11 @@ import { creditsEstimateToday, totalOpenMinutesToday } from "@/lib/schedule";
  *   TWELVEDATA_KEY   → chave 1
  *   TWELVEDATA_KEY2  → chave 2
  *   TWELVEDATA_KEY3  → chave 3 (suporta até 5)
- * O cron escolhe a cadência de polling (intervalo por ativo) de forma que o
- * TOTAL estimado do dia caiba na soma das cotas (padrão 790/chave), e usa a
- * chave 1 enquanto houver cota do dia, depois chave 2, depois chave 3 —
- * exatamente a rotação pedida. Ao esgotar todas, segue no Finnhub (sem parar).
+ * O cron busca TODOS os ativos a cada tick (~2 min — mesma cadência que manteve
+ * os sinais fluindo), usando a chave 1 enquanto houver cota do dia, depois a 2,
+ * depois a 3; esgotadas todas, segue no Finnhub no mesmo ritmo (sem parar).
+ * timezone=UTC é obrigatório na chamada à API (senão os candles vêm com o
+ * fuso do ativo, ~+10h, e são gravados com timestamp no futuro).
  */
 
 const TIMEOUT_MS = 12_000;
@@ -46,9 +47,6 @@ export interface TdPlan {
   keyCount: number;
   perKeyBudget: number;
   totalBudget: number;
-  /** Intervalo de polling por ativo (múltiplo de 2, mínimo 2) que cabe no dia. */
-  intervalMin: number;
-  groupCount: number;
   /** Créditos estimados já consumidos hoje (eixo dia UTC). */
   usedToday: number;
   remaining: number;
@@ -58,29 +56,27 @@ export interface TdPlan {
 }
 
 /**
- * Plano do dia p/ Twelve Data:
- *  - intervalo por ativo = menor múltiplo de 2 (≥2) cujo gasto total do dia
- *    (N ativos × minutos abertos ÷ intervalo) caiba na soma das cotas;
- *  - chave ativa = faixa do dia (chave 1 até ~790, chave 2 até ~1580…);
- *  - dias leves (domingo, janela curta) caem para 2 min por ativo.
+ * Estado Twelve Data do momento (o cron busca TODOS os ativos a cada tick,
+ * ~2 min — mesma cadência que manteve os sinais fluindo):
+ *  - usa a Twelve Data enquanto houver cota do dia, rotacionando chave 1 → 2 → 3
+ *    (estimativa determinística por faixa de créditos no eixo do dia UTC);
+ *  - quando todas as chaves esgotam, o cron segue no Finnhub no mesmo ritmo.
+ * Sem chave configurada → exhausted=true (Finnhub direto).
  */
-export function tdPlan(now: Date = new Date(), counts: { forex: number; stock: number } = { forex: 11, stock: 3 }): TdPlan {
+export function tdPlan(
+  now: Date = new Date(),
+  counts: { forex: number; stock: number } = { forex: 11, stock: 3 },
+  tickMin = 2
+): TdPlan {
   const keyCount = twelveDataKeyCount();
   const perKeyBudget = twelveDataPerKeyBudget();
   const totalBudget = keyCount * perKeyBudget;
   if (!keyCount) {
-    return { keyCount: 0, perKeyBudget, totalBudget: 0, intervalMin: 2, groupCount: 1, usedToday: 0, remaining: 0, activeKey: null, exhausted: true };
+    return { keyCount: 0, perKeyBudget, totalBudget: 0, usedToday: 0, remaining: 0, activeKey: null, exhausted: true };
   }
 
-  // requisições/dia se cada ativo fosse buscado 1×/minuto durante sua janela
-  const assetMin = totalOpenMinutesToday("forex", now) * counts.forex + totalOpenMinutesToday("stock", now) * counts.stock;
-  const usable = Math.max(1, Math.floor(totalBudget * 0.97));
-  let intervalMin = 2;
-  if (assetMin > usable) {
-    intervalMin = 2 * Math.max(1, Math.ceil(assetMin / (2 * usable)));
-  }
-
-  const usedToday = Math.min(totalBudget, creditsEstimateToday(now, counts, intervalMin));
+  const tick = Math.max(1, Math.min(60, Math.round(tickMin) || 2));
+  const usedToday = Math.min(totalBudget, creditsEstimateToday(now, counts, tick));
   const exhausted = usedToday >= totalBudget;
   const activeKey = exhausted ? null : Math.min(keyCount - 1, Math.floor(usedToday / perKeyBudget));
 
@@ -88,24 +84,11 @@ export function tdPlan(now: Date = new Date(), counts: { forex: number; stock: n
     keyCount,
     perKeyBudget,
     totalBudget,
-    intervalMin,
-    groupCount: Math.max(1, Math.round(intervalMin / 2)),
     usedToday,
     remaining: Math.max(0, totalBudget - usedToday),
     activeKey,
     exhausted,
   };
-}
-
-/**
- * O ativo `canonicalIndex` deve ser buscado NESTE tick do cron (cada tick = 2 min)?
- * Com intervalo 2 min todos são buscados em todo tick; com intervalo maior, os
- * ativos são divididos em grupos e cada grupo é buscado a cada `intervalMin`.
- */
-export function tdSlotMatches(now: Date, canonicalIndex: number, intervalMin: number): boolean {
-  const groupCount = Math.max(1, Math.round(intervalMin / 2));
-  const slot = Math.floor(now.getTime() / 120_000);
-  return canonicalIndex % groupCount === slot % groupCount;
 }
 
 interface TwelveDataValue {
@@ -118,12 +101,16 @@ interface TwelveDataValue {
 
 /** 1 requisição com uma chave específica → candles (ou null em erro/limite). */
 async function tdRequest(symbol: string, interval: string, outputsize: number, key: string): Promise<Candle[] | null> {
-  const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(symbol)}&interval=${interval}&outputsize=${outputsize}&apikey=${key}`;
+  // timezone=UTC é OBRIGATÓRIO: sem ele a Twelve Data devolve o datetime no
+  // fuso do ativo (~+10h p/ forex) e o parser (que assume UTC) grava candles
+  // com timestamp no FUTURO — o que travou o gatilho de "nova vela 5m" do cron.
+  const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(symbol)}&interval=${interval}&outputsize=${outputsize}&timezone=UTC&apikey=${key}`;
   try {
     const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(TIMEOUT_MS) });
     if (!res.ok) return null;
     const json = (await res.json()) as { status?: string; values?: TwelveDataValue[] };
     if (json.status !== "ok" || !json.values?.length) return null;
+    const nowSec = Math.floor(Date.now() / 1000);
     // values vêm mais recentes primeiro → inverter p/ ordem crescente
     return json.values
       .map((v) => ({
@@ -133,7 +120,9 @@ async function tdRequest(symbol: string, interval: string, outputsize: number, k
         low: parseFloat(v.low),
         close: parseFloat(v.close),
       }))
-      .filter((c) => Number.isFinite(c.ts))
+      // defesa em profundidade: descarta qualquer candle com ts no futuro
+      // (além da tolerância de relógio) ou absurdamente antigo
+      .filter((c) => Number.isFinite(c.ts) && c.ts <= nowSec + 150 && c.ts >= nowSec - 45 * 86400)
       .sort((a, b) => a.ts - b.ts);
   } catch {
     return null;

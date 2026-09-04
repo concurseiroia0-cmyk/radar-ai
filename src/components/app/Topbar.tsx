@@ -17,7 +17,6 @@ interface TopbarProps {
     source: string;
     keys?: number;
     activeKey?: number | null;
-    intervalMin?: number;
   };
 }
 
@@ -53,7 +52,7 @@ export default function Topbar({ email, demo, quota }: TopbarProps) {
         {quota && (
           <span
             className="hidden text-xs text-muted-foreground sm:inline"
-            title={`Twelve Data: ${quota.keys ?? 0} chave(s) × 800 créditos/dia. O cron usa a chave 1 até o teto, depois 2, depois 3; cadência de ${quota.intervalMin ?? "—"} min por ativo. Esgotadas → fallback Finnhub (sem parar).`}
+            title={`Twelve Data: ${quota.keys ?? 0} chave(s) × 800 créditos/dia. Todos os ativos são buscados a cada ~2 min; o cron usa a chave 1 até o teto, depois 2, depois 3. Esgotadas → fallback Finnhub (sem parar).`}
           >
             • cota TD {quota.used}/{quota.budget ?? quota.remaining}
             {quota.source === "twelvedata" && quota.activeKey != null && (

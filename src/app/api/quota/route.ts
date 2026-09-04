@@ -4,8 +4,9 @@ import { tdPlan } from "@/lib/services/marketData";
 /**
  * GET /api/quota — cota Twelve Data (conceitual, exibição no topo).
  * Multi-chave (TWELVEDATA_KEY / KEY2 / KEY3…): cada conta free dá 800
- * créditos/dia; o cron usa a chave 1 até ~790, depois a 2, depois a 3, com
- * cadência por ativo que caiba no dia. Esgotadas todas → fallback Finnhub.
+ * créditos/dia. O cron busca todos os ativos a cada ~2 min e usa a chave 1
+ * até ~790 créditos do dia, depois a 2, depois a 3; esgotadas todas, segue
+ * no fallback Finnhub no mesmo ritmo (os sinais não param).
  */
 export async function GET() {
   const now = new Date();
@@ -18,11 +19,10 @@ export async function GET() {
     budget: plan.totalBudget,
     keys: plan.keyCount,
     activeKey: plan.activeKey === null ? null : plan.activeKey + 1, // 1-based p/ exibição
-    intervalMin: plan.intervalMin,
     source: plan.exhausted ? "finnhub" : "twelvedata",
     concept: true,
-    note: `Twelve Data: ${plan.keyCount} chave(s) × ${plan.perKeyBudget} créditos/dia. Chave ativa: ${
+    note: `Twelve Data: ${plan.keyCount} chave(s) × ${plan.perKeyBudget} créditos/dia. Polling de todos os ativos a cada ~2 min dentro das janelas (IQ Option p/ forex, NYSE p/ ações). Chave ativa: ${
       plan.activeKey === null ? "nenhuma (esgotadas)" : `#${plan.activeKey + 1}`
-    } · polling a cada ${plan.intervalMin} min por ativo dentro das janelas (IQ Option p/ forex, NYSE p/ ações).`,
+    }.`,
   });
 }
