@@ -66,6 +66,8 @@ Sem `NEXT_PUBLIC_SUPABASE_URL` o app roda em **modo demonstração**: dados sint
 | `TWELVEDATA_KEY` / `_KEY2` / `_KEY3`… | produção | candles 1m — multi-chave (800/dia cada): busca todos os ativos a cada ~2 min; chave 1 até o teto → 2 → 3 → só então Finnhub |
 | `FINNHUB_KEY` | produção | fallback quando as chaves Twelve Data esgotam (não para os sinais) |
 | `SIGNAL_MEMORY_*` | — | memória de estratégias (amostras/acerto mínimos p/ segurar combo frio) — ver .env.example |
+| `ENGINE_MIN_STRATEGIES` | — | mínimo de estratégias confirmadas p/ sinal válido (padrão **2** = só Confluência; `1` relaxa p/ qualquer estratégia) |
+| `ENGINE_RSI_BAND` | — | banda RSI saudável p/ entrar (padrão **40-65**; `30-70` relaxa) — evita entrada esticada |
 | `OPENROUTER_KEY` | alertas IA | consenso multi-modelo (enriquece o alerta quando presente) |
 | `TELEGRAM_BOT_TOKEN` / `CHAT_ID` | alertas | envio de TODO sinal técnico (consenso opcional via `TG_REQUIRE_CONSENSUS`) |
 | `CRON_SECRET` | produção | protege `/api/cron` |
@@ -76,6 +78,7 @@ Sem `NEXT_PUBLIC_SUPABASE_URL` o app roda em **modo demonstração**: dados sint
 - **Indicadores**: EMA 9/21/50, RSI-14 (Wilder), MACD 12/26/9 (estado ±0.00005), ATR-14 (Wilder), ATR%, Suporte/Resistência por swing points, lateralidade, volatilidade (ATR% 0.03–0.25 conservador).
 - **Estratégias**: Tendência+Pullback · Suporte/Resistência · Breakout (guarda anti-whipsaw) · **Confluência** (agrega as 3).
 - **Filtros (ordem)**: lateral → estrutura confusa → sinais contraditórios → volatilidade → notícias (stub).
+- **Qualidade v2 (backtest nos candles reais)**: sinal válido exige **Confluência (≥2 de 3 estratégias)** + **RSI 40–65** — elevou o acerto do stream real de **47% → ~63%** (5 dias, 89 sinais, estável nos dois splits); relaxável via `ENGINE_MIN_STRATEGIES`/`ENGINE_RSI_BAND`.
 - **Score transparente 0–100**: Tendência +20 · Estrutura +20 · Confirmação +20 · Momentum +20 · Qualidade +20.
 
 ## Backtest

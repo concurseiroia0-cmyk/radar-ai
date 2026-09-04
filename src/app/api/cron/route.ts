@@ -231,7 +231,18 @@ export async function POST(req: Request) {
         .upsert({ asset_id: asset.id, last_5m_ts: last5mTs, updated_at: new Date().toISOString() }, { onConflict: "asset_id" });
 
       // ---- 7) engine ----
-      const engine = runEngine({ candles5m: candles5m.slice(-400), candles1m, candles15m });
+      // Qualidade v2: mín. de estratégias (padrão 2 = Confluência) e banda RSI
+      // saudável (padrão 40–65). Relaxáveis em produção via env:
+      //   ENGINE_MIN_STRATEGIES=1  → aceita sinal com qualquer 1 estratégia
+      //   ENGINE_RSI_BAND=30-70     → banda mais larga
+      const minStrategies = Number(process.env.ENGINE_MIN_STRATEGIES ?? 2);
+      const rsiRaw = process.env.ENGINE_RSI_BAND ?? "40-65";
+      const rsiParts = rsiRaw.split("-").map((x) => Number(x.trim()));
+      const rsiBand: [number, number] =
+        rsiParts.length === 2 && Number.isFinite(rsiParts[0]) && Number.isFinite(rsiParts[1])
+          ? [rsiParts[0], rsiParts[1]]
+          : [40, 65];
+      const engine = runEngine({ candles5m: candles5m.slice(-400), candles1m, candles15m, minStrategies, rsiBand });
       if (!engine.valid || engine.direction === "NEUTRAL" || engine.score < scoreMin) continue;
 
       // ---- 7b) memória de estratégias (reuso conservador do histórico): um

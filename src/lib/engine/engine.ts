@@ -16,10 +16,25 @@ export interface EngineInput {
   news?: NewsBlockConfig | null;
   /** score mínimo (filtro de registro, NÃO bloqueia o motor) */
   scoreMin?: number;
+  /** qualidade v2: nº mínimo de estratégias confirmadas (2 = só Confluência). */
+  minStrategies?: number;
+  /** qualidade v2: banda RSI saudável [min, max] — bloqueia entrada esticada. */
+  rsiBand?: [number, number];
 }
 
 export const MIN_CANDLES = 60;
 export const LOOKBACK = 400;
+
+/**
+ * QUALIDADE v2 — ajustes baseados em backtest sobre os candles REAIS
+ * (5 dias de mercado, 719 sinais com score>=75):
+ *   - 1 estratégia qualquer  → ~44% win (pior que cara ou coroa)
+ *   - 2+ estratégias (Confluência) → ~51% win
+ *   - Confluência + RSI 40–65  → ~62% win (robusto nos dois splits temporais)
+ * Padrão: exigir Confluência + banda 40–65. Relaxável via EngineInput/env.
+ */
+export const DEFAULT_MIN_STRATEGIES = 2;
+export const DEFAULT_RSI_BAND: [number, number] = [40, 65];
 
 /**
  * MOTOR ÚNICO — mesma função roda em tempo real (cron) e no backtest.
@@ -49,6 +64,8 @@ export function runEngine(input: EngineInput): EngineResult {
   const entryPrice = lastCandle.close;
 
   const ind = buildIndicatorPack(candles5m.slice(-LOOKBACK));
+  const minStrategies = input.minStrategies ?? DEFAULT_MIN_STRATEGIES;
+  const rsiBand = input.rsiBand ?? DEFAULT_RSI_BAND;
 
   const { hits, direction: suggestedDirection, winner } = evaluateStrategies(ind, candles5m, lastIdx);
 
@@ -66,9 +83,16 @@ export function runEngine(input: EngineInput): EngineResult {
     };
   }
 
-  // nenhuma estratégia confirmada → sem setup coerente → NO TRADE
-  if (winner === "Nenhuma" || !hits.some((h) => h.passed)) {
-    invalidReasons.push("Nenhuma estratégia confirmada — sem setup coerente");
+  // qualidade v2: mínimo de estratégias confirmadas (padrão 2 = Confluência)
+  const confluent = hits.find((h) => h.name === "Confluência")?.passed ?? false;
+  const anyHit = hits.some((h) => h.passed);
+  if (minStrategies > 1 ? !confluent : !anyHit) {
+    const passedCount = hits.filter((h) => h.passed && h.name !== "Confluência").length;
+    invalidReasons.push(
+      minStrategies > 1
+        ? `Confluência insuficiente (${passedCount}/3 estratégias confirmadas, mínimo ${minStrategies}) — sem setup coerente`
+        : "Nenhuma estratégia confirmada — sem setup coerente"
+    );
     return { valid: false, direction: "NEUTRAL", score: 0, strategy: winner, confluences: [], reasons: [], entryPrice, invalidReasons };
   }
 
@@ -83,6 +107,15 @@ export function runEngine(input: EngineInput): EngineResult {
 
   if (direction === "NEUTRAL") {
     invalidReasons.push("Nenhuma estratégia confirmada — direção neutra");
+    return { valid: false, direction: "NEUTRAL", score: 0, strategy: winner, confluences: [], reasons: [], entryPrice, invalidReasons };
+  }
+
+  // qualidade v2: banda RSI saudável (bloqueia entrada esticada —
+  // CALL com RSI 70+ e PUT com RSI 30- perdem no backtest real)
+  if (ind.rsi < rsiBand[0] || ind.rsi > rsiBand[1]) {
+    invalidReasons.push(
+      `RSI ${ind.rsi.toFixed(1)} fora da faixa saudável ${rsiBand[0]}–${rsiBand[1]} — movimento esticado demais`
+    );
     return { valid: false, direction: "NEUTRAL", score: 0, strategy: winner, confluences: [], reasons: [], entryPrice, invalidReasons };
   }
 
