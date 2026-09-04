@@ -7,6 +7,17 @@ import type { Candle } from "@/lib/engine";
 
 const TIMEOUT_MS = 12_000;
 
+/**
+ * Teto diário de créditos Twelve Data (free: 800/dia). O cron para de usar a
+ * Twelve Data ao atingir ~este valor e segue SÓ com o fallback Finnhub até o
+ * fim do dia — assim a cota nunca "estoura no meio do dia" e os sinais
+ * continuam no mesmo ritmo (Finnhub free: 60 chamadas/min, sem teto diário).
+ */
+export function twelveDataDailyBudget(): number {
+  const n = Number(process.env.TWELVEDATA_DAILY_BUDGET ?? 790);
+  return Number.isFinite(n) && n > 0 ? n : 790;
+}
+
 interface TwelveDataValue {
   datetime: string;
   open: string;

@@ -3,12 +3,13 @@ import Sidebar from "@/components/app/Sidebar";
 import Topbar from "@/components/app/Topbar";
 import { createServerSupabaseClient, isSupabaseConfigured } from "@/lib/services/supabase-server";
 import { creditsEstimateToday } from "@/lib/schedule";
+import { twelveDataDailyBudget } from "@/lib/services/marketData";
 import { getProfile } from "@/lib/actions/profile";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const demo = !isSupabaseConfigured();
   let email: string | null = null;
-  let quota: { date: string; used: number; remaining: number; source: string } | undefined;
+  let quota: { date: string; used: number; remaining: number; budget?: number; source: string } | undefined;
 
   if (!demo) {
     const supabase = await createServerSupabaseClient();
@@ -19,20 +20,22 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     if (!user) redirect("/login");
     email = user.email ?? null;
 
-    // quota conceitual (Twelve Data free: 800/dia) — minutos abertos hoje por
-    // tipo × ativos ativos do perfil (1 requisição por ativo a cada 5 min)
+    // cota Twelve Data (free: 800/dia): estima o consumo até agora com a mesma
+    // fórmula do cron; ao atingir o teto o radar segue no fallback Finnhub.
     const profile = await getProfile();
     const counts = { forex: 0, stock: 0 };
     for (const s of profile?.ativos_ativos ?? []) {
       if (s.includes("/")) counts.forex++;
       else counts.stock++;
     }
-    const used = creditsEstimateToday(new Date(), counts);
+    const budget = twelveDataDailyBudget();
+    const used = Math.min(budget, creditsEstimateToday(new Date(), counts));
     quota = {
       date: new Date().toISOString().slice(0, 10),
       used,
-      remaining: Math.max(0, 800 - used),
-      source: "twelvedata",
+      remaining: Math.max(0, budget - used),
+      budget,
+      source: used >= budget ? "finnhub" : "twelvedata",
     };
   }
 

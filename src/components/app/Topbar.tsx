@@ -9,7 +9,7 @@ import { useRouter } from "next/navigation";
 interface TopbarProps {
   email?: string | null;
   demo: boolean;
-  quota?: { date: string; used: number; remaining: number; source: string };
+  quota?: { date: string; used: number; remaining: number; budget?: number; source: string };
 }
 
 function formatUtc(d: Date): string {
@@ -42,8 +42,12 @@ export default function Topbar({ email, demo, quota }: TopbarProps) {
         </span>
         <span className="font-medium">Monitorando</span>
         {quota && (
-          <span className="hidden text-xs text-muted-foreground sm:inline">
-            • quota {quota.used}/{quota.remaining} ({quota.source})
+          <span
+            className="hidden text-xs text-muted-foreground sm:inline"
+            title="Twelve Data free: 800 créditos/dia. Ao atingir o teto o radar segue no fallback Finnhub (sem parar)."
+          >
+            • cota TD {quota.used}/{quota.budget ?? quota.remaining}
+            {quota.source === "finnhub" && <span className="text-warn"> · fallback Finnhub ativo</span>}
           </span>
         )}
       </div>

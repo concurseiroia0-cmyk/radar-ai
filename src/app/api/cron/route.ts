@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { aggregateTo5m, aggregateTo15m, runEngine, buildIndicatorPack } from "@/lib/engine";
-import { fetchCandles } from "@/lib/services/marketData";
+import { fetchCandles, fetchCandlesFinnhub, twelveDataDailyBudget } from "@/lib/services/marketData";
 import { createServiceSupabaseClient, isSupabaseConfigured } from "@/lib/services/supabase-server";
 import { buildPayload } from "@/lib/ai/payload";
 import { runConsensus, aiAvailable } from "@/lib/ai/consensus";
 import { formatAlert, sendTelegramMessage } from "@/lib/services/telegram";
 import { resolveExpired } from "@/lib/services/paperResolution";
-import { marketOpen } from "@/lib/schedule";
+import { marketOpen, creditsEstimateToday } from "@/lib/schedule";
 import { ACTIVE_SYMBOLS } from "@/lib/assets";
+import { fetchColdCheck } from "@/lib/signalMemory";
 
 /**
  * CRON — heartbeat do sistema (chamar via cron-job.org a cada 2 min).
@@ -75,6 +76,18 @@ export async function POST(req: Request) {
   const { data: assetRows } = await supabase.from("assets").select("id, symbol, type").eq("active", true);
   const assets = (assetRows ?? []).filter((a) => ativos.includes(a.symbol));
 
+  // ---- cota Twelve Data: usa TD até o teto diário e depois segue SÓ Finnhub
+  // (mesmo ritmo, sem estourar a meta). Estimativa determinística a partir do
+  // relógio/janela — igual ao medidor exibido no topo da página.
+  const tdBudget = twelveDataDailyBudget();
+  const tickMin = Math.max(1, Math.round((Number(process.env.CRON_INTERVAL ?? 120) || 120) / 60));
+  const counts = {
+    forex: assets.filter((a) => a.type !== "stock").length,
+    stock: assets.filter((a) => a.type === "stock").length,
+  };
+  const tdEstimateUsed = creditsEstimateToday(now, counts, tickMin);
+  const useTwelveData = tdEstimateUsed < tdBudget;
+
   // Resolução de sinais/paper expirados roda SEMPRE (não consome cota de dados):
   // um trade que venceu fora da janela resolve no próximo tick, mesmo sábado.
   let paperResolvedGlobal = 0;
@@ -102,8 +115,15 @@ export async function POST(req: Request) {
     signalsCreated: 0,
     alertsSent: 0,
     paperResolved: paperResolvedGlobal,
+    memorySuppressed: [] as string[],
     errors: [] as string[],
     windows: { forex: forexOpen, stock: stockOpen },
+    quota: {
+      provider: useTwelveData ? "twelvedata" : "finnhub-only",
+      tdBudget,
+      tdEstimateUsed,
+      fallbackFinnhub: !useTwelveData,
+    },
   };
 
   for (const asset of assets) {
@@ -115,7 +135,10 @@ export async function POST(req: Request) {
       // ---- 3/4) fetch + upsert 1m/5m/15m ----
       // Histórico profundo: o motor exige >= 60 candles 5m (300 de 1m).
       // Com ~2000 de 1m temos ~400 de 5m e ~133 de 15m (lookback real).
-      const candles1m = await fetchCandles(asset.symbol as string, 2000);
+      // Provedor: Twelve Data enquanto houver cota do dia; depois, Finnhub direto.
+      const candles1m = useTwelveData
+        ? await fetchCandles(asset.symbol as string, 2000)
+        : await fetchCandlesFinnhub(asset.symbol, "1", 2000);
       if (!candles1m || candles1m.length < 10) {
         summary.errors.push(`${asset.symbol}: sem dados (provedor sem chave ou offline)`);
         continue;
@@ -170,6 +193,21 @@ export async function POST(req: Request) {
       // ---- 7) engine ----
       const engine = runEngine({ candles5m: candles5m.slice(-400), candles1m, candles15m });
       if (!engine.valid || engine.direction === "NEUTRAL" || engine.score < scoreMin) continue;
+
+      // ---- 7b) memória de estratégias (reuso conservador do histórico): um
+      // combo ativo+direção+estratégia com amostra suficiente e acerto baixo
+      // deixa de gerar sinal/alerta — o resto segue EXATAMENTE como hoje. ----
+      const cold = await fetchColdCheck(supabase, {
+        assetId: asset.id,
+        direction: engine.direction,
+        strategy: engine.strategy,
+      });
+      if (cold.cold) {
+        summary.memorySuppressed.push(
+          `${asset.symbol} ${engine.direction} (${engine.strategy}) — histórico ${cold.stat.wins}W/${cold.stat.losses}L (${Math.round(cold.stat.winRate * 100)}%)`
+        );
+        continue;
+      }
 
       // ---- 8) grava signal ----
       const { data: sig, error: sigErr } = await supabase

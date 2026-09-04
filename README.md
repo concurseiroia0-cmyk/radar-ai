@@ -63,7 +63,9 @@ Sem `NEXT_PUBLIC_SUPABASE_URL` o app roda em **modo demonstração**: dados sint
 |---|---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` / `ANON_KEY` | sim | Supabase (sem elas → demo mode) |
 | `SUPABASE_SERVICE_KEY` | produção | escrita server-side (cron, backtest) — sem ela cron/backtest não gravam |
-| `TWELVEDATA_KEY` / `FINNHUB_KEY` | produção | candles 1m (primário + fallback) |
+| `TWELVEDATA_KEY` / `FINNHUB_KEY` | produção | candles 1m (TD primário até o teto do dia → Finnhub) |
+| `TWELVEDATA_DAILY_BUDGET` | — | teto diário de créditos Twelve Data (default 790) — depois segue só Finnhub |
+| `SIGNAL_MEMORY_*` | — | memória de estratégias (amostras/acerto mínimos p/ segurar combo frio) — ver .env.example |
 | `OPENROUTER_KEY` | alertas IA | consenso multi-modelo |
 | `TELEGRAM_BOT_TOKEN` / `CHAT_ID` | alertas | envio após consenso válido |
 | `CRON_SECRET` | produção | protege `/api/cron` |
