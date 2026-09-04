@@ -1,16 +1,18 @@
 /**
  * Horários de mercado do Radar — fonte ÚNICA para "quando o mercado está aberto".
  *
- * Pares de forex: janela oficial da IQ Option fornecida pelo usuário, EM UTC:
- *   Dom 22:00–23:59
- *   Seg–Qui 00:00–15:30 e 22:00–23:59
- *   Sex 00:00–15:30
- *   Sáb fechado
+ * Pares de forex: janela oficial da IQ Option PARA O BRASIL, informada pelo
+ * usuário COM O CABEÇALHO "HORÁRIO (UTC-3)" — ou seja, horário de Brasília:
+ *   Seg–Qui 00:00–15:30 e 22:00–23:59 (Brasília)
+ *   Sex 00:00–15:30 (Brasília)
+ *   Sáb fechado · Dom 22:00–23:59 (Brasília)
+ * Em UTC isso equivale a: Seg–Sex 01:00–18:30 UTC (contínuo), Sáb–Dom fechado.
+ * O usuário SÓ consegue operar EUR/USD etc. na IQ Option dentro dessa janela,
+ * então o cron busca candles/genera sinais exatamente nesses momentos.
+ *
  * Ações dos EUA (AAPL, TSLA, NVDA…): pregão regular da NYSE —
  *   Seg–Sex 09:30–16:00 em Nova York (horário de verão americano incluso).
  *
- * O cron usa estes horários para NÃO gastar cota da API fora deles; as páginas
- * usam para esconder countdowns/avisar quando o mercado fecha.
  * Brasília = UTC−3 fixo (sem horário de verão desde 2019).
  */
 
@@ -19,10 +21,11 @@ export type MarketType = "forex" | "stock";
 const MIN = 60;
 
 /**
- * Janela forex por dia da semana (Date.getUTCDay(): 0 = domingo).
- * Valores em minutos do dia UTC; fim INCLUSIVO (segue a tabela "22:00–23:59").
+ * Janela forex por dia da semana EM HORÁRIO DE BRASÍLIA
+ * (Date.getUTCDay() do relógio deslocado −3h: 0 = domingo).
+ * Valores em minutos do dia; fim INCLUSIVO (segue a tabela "22:00–23:59").
  */
-const FX_UTC_MIN: Record<number, [number, number][]> = {
+const FX_BRT_MIN: Record<number, [number, number][]> = {
   0: [[22 * MIN, 23 * MIN + 59]], // dom 22:00–23:59
   1: [[0, 15 * MIN + 30], [22 * MIN, 23 * MIN + 59]], // seg
   2: [[0, 15 * MIN + 30], [22 * MIN, 23 * MIN + 59]], // ter
@@ -34,16 +37,19 @@ const FX_UTC_MIN: Record<number, [number, number][]> = {
 
 const DAY_PT = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
 
-/** Resumo fixo (deriva diretamente da tabela do usuário) — exibição nas páginas. */
-export const FX_SUMMARY_UTC =
-  "Seg–Qui 00h00–15h30 + 22h00–23h59 · Sex 00h00–15h30 · Dom 22h00–23h59 · Sáb fechado (UTC)";
-/** Mesma janela convertida para Brasília (UTC−3 fixo). */
+/** Resumo da janela forex NO HORÁRIO DA IQ OPTION (Brasília) — exibição principal. */
 export const FX_SUMMARY_BRT =
-  "Seg–Qui 00h00–12h30 + 19h00–20h59 · Sex 00h00–12h30 · Dom 19h00–20h59 · Sáb fechado (horário de Brasília)";
+  "Seg–Qui 00h00–15h30 + 22h00–23h59 · Sex 00h00–15h30 · Dom 22h00–23h59 · Sáb fechado (horário de Brasília)";
+/** Mesma janela em UTC (equivalência: Seg–Sex 01h00–18h30 UTC). */
+export const FX_SUMMARY_UTC =
+  "Seg–Sex 01h00–18h30 UTC (contínuo) · Sáb e Dom fechados";
 export const STOCK_SUMMARY = "Ações EUA: Seg–Sex 09h30–16h00 (Nova York)";
 
-/** Minutos desde a meia-noite UTC. */
-const utcMinutes = (d: Date) => d.getUTCHours() * 60 + d.getUTCMinutes();
+/** Relógio de Brasília (UTC−3 fixo): weekday 0=dom + minutos desde a meia-noite. */
+function brClock(d: Date): { dow: number; minutes: number } {
+  const b = new Date(d.getTime() - 3 * 3600_000);
+  return { dow: b.getUTCDay(), minutes: b.getUTCHours() * 60 + b.getUTCMinutes() };
+}
 
 /** Relógio em Nova York (weekday 0=dom + minutos desde a meia-noite de NY). */
 function nyClock(d: Date): { dow: number; minutes: number } {
@@ -69,9 +75,9 @@ function nyClock(d: Date): { dow: number; minutes: number } {
 export function marketOpen(type: MarketType, now: Date = new Date(), graceSec = 0): boolean {
   const gMin = Math.ceil(graceSec / MIN);
   if (type === "forex") {
-    const m = utcMinutes(now);
-    for (const [s, e] of FX_UTC_MIN[now.getUTCDay()] ?? []) {
-      if (m >= s && m <= e + gMin) return true;
+    const br = brClock(now);
+    for (const [s, e] of FX_BRT_MIN[br.dow] ?? []) {
+      if (br.minutes >= s && br.minutes <= e + gMin) return true;
     }
     return false;
   }
@@ -130,7 +136,7 @@ export function nextOpenLabels(type: MarketType, now: Date = new Date()): { brt:
   const next = nextMarketOpen(type, now);
   if (!next) return { brt: null, utc: null, day: null };
   return {
-    day: DAY_PT[next.getUTCDay()],
+    day: DAY_PT[brClock(next).dow],
     brt: fmtBrtTime(next),
     utc: fmtUtcTime(next),
   };
@@ -162,8 +168,7 @@ export function marketSession(type: MarketType | "all" = "all", now: Date = new 
 
   const next =
     type === "all"
-      ? // próximo início entre os dois mercados (o que abrir primeiro)
-        (() => {
+      ? (() => {
           const f = nextMarketOpen("forex", now);
           const s = nextMarketOpen("stock", now);
           const list = [f, s].filter((d): d is Date => d !== null);
@@ -180,35 +185,22 @@ export function marketSession(type: MarketType | "all" = "all", now: Date = new 
     stockWindow: STOCK_SUMMARY,
     nextStartBrt: next ? fmtBrtTime(next) : null,
     nextStartUtc: next ? fmtUtcTime(next) : null,
-    nextStartDayPt: next ? DAY_PT[next.getUTCDay()] : null,
+    nextStartDayPt: next ? DAY_PT[brClock(next).dow] : null,
   };
 }
 
 /**
- * Minutos JÁ transcorridos hoje em que o mercado do tipo está/esteve aberto
- * (para estimativa de cota da API — o cron consome 1 requisição/ativo/intervalo).
+ * Minutos JÁ transcorridos hoje (dia UTC — reset da cota do provedor) em que o
+ * mercado do tipo está/esteve aberto — usado na estimativa de cota da API.
+ * Forex: contagem por minuto sobre a janela Brasília (matemática pura).
  */
-/**
- * Estimativa conceitual de créditos de dados gastos hoje
- * (1 requisição por ativo a cada `intervalMin` dentro da janela do próprio tipo).
- * Twelve Data free: 800 créditos/dia — usado no Topbar e em /api/quota.
- */
-export function creditsEstimateToday(
-  now: Date = new Date(),
-  counts: { forex: number; stock: number } = { forex: 10, stock: 3 },
-  intervalMin = 5
-): number {
-  const f = Math.floor(openMinutesElapsedToday("forex", now) / intervalMin) * counts.forex;
-  const s = Math.floor(openMinutesElapsedToday("stock", now) / intervalMin) * counts.stock;
-  return Math.min(800, f + s);
-}
-
 export function openMinutesElapsedToday(type: MarketType, now: Date = new Date()): number {
-  const m = utcMinutes(now);
+  const nowMin = Math.floor(now.getTime() / 60_000);
+  const dayStartMin = Math.floor(now.getTime() / 86_400_000) * 1440;
   if (type === "forex") {
     let total = 0;
-    for (const [s, e] of FX_UTC_MIN[now.getUTCDay()] ?? []) {
-      total += Math.max(0, Math.min(e, m) - s + 1);
+    for (let m = 0; m <= nowMin - dayStartMin; m++) {
+      if (marketOpen("forex", new Date((dayStartMin + m) * 60_000))) total++;
     }
     return total;
   }
@@ -216,4 +208,19 @@ export function openMinutesElapsedToday(type: MarketType, now: Date = new Date()
   if (ny.dow < 1 || ny.dow > 5) return 0;
   if (ny.minutes < 9 * 60 + 30) return 0;
   return Math.min(ny.minutes - (9 * 60 + 30), 6 * 60 + 30); // 09:30–16:00 = 390 min
+}
+
+/**
+ * Estimativa conceitual de créditos de dados gastos hoje
+ * (1 requisição por ativo a cada `intervalMin` dentro da janela do próprio tipo).
+ * Twelve Data free: 800 créditos/dia — usado no Topbar e em /api/quota.
+ */
+export function creditsEstimateToday(
+  now: Date = new Date(),
+  counts: { forex: number; stock: number } = { forex: 11, stock: 3 },
+  intervalMin = 5
+): number {
+  const f = Math.floor(openMinutesElapsedToday("forex", now) / intervalMin) * counts.forex;
+  const s = Math.floor(openMinutesElapsedToday("stock", now) / intervalMin) * counts.stock;
+  return Math.min(800, f + s);
 }

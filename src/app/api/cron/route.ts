@@ -18,7 +18,7 @@ import { refreshTelegramCountdowns } from "@/lib/services/telegramLive";
  * Fluxo:
  *  1. ler configurações (score_minimo, ativos)
  *  2. janela de mercado por tipo (src/lib/schedule.ts): forex segue os
- *     horários da IQ Option em UTC; ações dos EUA seguem o pregão da NYSE.
+ *     horários da IQ Option EM HORÁRIO DE BRASÍLIA (UTC−3); ações dos EUA seguem o pregão da NYSE.
  *     Fora da janela NÃO busca candles (economiza cota da API).
  *  3. buscar últimos candles 1m por ativo ATIVO e aberto (Twelve Data → Finnhub)
  *  4. upsert candles (asset_id, '1m', ts) — sem duplicados
@@ -68,7 +68,7 @@ export async function POST(req: Request) {
   // atenção à cota do provedor: N ativos × chamadas por dia ≤ cota gratuita —
   // as janelas abaixo já eliminam as chamadas fora do horário de mercado.
 
-  // ---- 2) janela de mercado (horários IQ Option em UTC — src/lib/schedule.ts) ----
+  // ---- 2) janela de mercado (horários IQ Option em Brasília/UTC−3 — src/lib/schedule.ts) ----
   const now = new Date();
   const forexOpen = marketOpen("forex", now, 150);
   const stockOpen = marketOpen("stock", now, 150);

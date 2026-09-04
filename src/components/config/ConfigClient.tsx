@@ -210,11 +210,9 @@ export default function ConfigClient({ initial, demo }: ConfigClientProps) {
           </CardHeader>
           <CardContent className="space-y-4 text-sm leading-relaxed text-muted-foreground">
             <div>
-              <p className="font-medium text-foreground">Forex — horário da IQ Option (UTC)</p>
+              <p className="font-medium text-foreground">Forex — horário da IQ Option (horário de Brasília, UTC−3)</p>
               <p className="mt-0.5">Seg–Qui 00:00–15:30 e 22:00–23:59 · Sex 00:00–15:30 · Dom 22:00–23:59 · Sáb fechado.</p>
-              <p className="mt-0.5">
-                = no Brasil: Seg–Qui 00h–12h30 e 19h–20h59 · Sex 00h–12h30 · Dom 19h–20h59.
-              </p>
+              <p className="mt-0.5">= em UTC: Seg–Sex 01h00–18h30 (contínuo) · Sáb–Dom fechado.</p>
             </div>
             <div>
               <p className="font-medium text-foreground">Ações EUA (AAPL, TSLA, NVDA)</p>

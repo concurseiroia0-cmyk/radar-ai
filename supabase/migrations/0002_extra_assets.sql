@@ -5,7 +5,8 @@
 -- Adiciona ao radar: EUR/GBP, USD/CHF, AUD/JPY, USD/CAD (forex) e
 -- AAPL, TSLA, NVDA (ações dos EUA). Os HORÁRIOS de mercado agora são
 -- fixos no código (src/lib/schedule.ts):
---   forex → janela da IQ Option em UTC (Seg–Qui 00–15:30 e 22–23:59, …)
+--   forex → janela da IQ Option EM HORÁRIO DE BRASÍLIA/UTC−3
+--   (Seg–Qui 00–15:30 e 22–23:59, Sex até 15:30, Dom 22–23:59, Sáb fechado)
 --   ações → pregão NYSE (Seg–Sex 09:30–16:00 Nova York)
 -- Não há mais config de janela por perfil (sessao_inicio/fim ficam
 -- obsoletos mas a coluna é mantida p/ compatibilidade).

@@ -69,7 +69,7 @@ Sem `NEXT_PUBLIC_SUPABASE_URL` o app roda em **modo demonstração**: dados sint
 | `OPENROUTER_KEY` | alertas IA | consenso multi-modelo |
 | `TELEGRAM_BOT_TOKEN` / `CHAT_ID` | alertas | envio após consenso válido |
 | `CRON_SECRET` | produção | protege `/api/cron` |
-| janela de mercado | — | fixa no código (`src/lib/schedule.ts`): IQ Option (UTC) p/ forex + NYSE p/ ações |
+| janela de mercado | — | fixa no código (`src/lib/schedule.ts`): IQ Option em horário de Brasília (UTC−3) p/ forex + NYSE p/ ações |
 
 ## Motor
 
