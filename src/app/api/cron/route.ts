@@ -86,15 +86,21 @@ export async function POST(req: Request) {
   const { data: assetRows } = await supabase.from("assets").select("id, symbol, type").eq("active", true);
   const assets = (assetRows ?? []).filter((a) => ativos.includes(a.symbol));
 
-  // ---- estado Twelve Data: todos os ativos são buscados a cada tick (~2 min);
-  // usa TD rotacionando chave 1 → 2 → 3 até esgotar as cotas do dia e, depois,
-  // segue no Finnhub no mesmo ritmo (não deixa os sinais pararem).
+  // ---- estado Twelve Data (exibição/conceitual): a decisão de provedor é feita
+  // POR RESPOSTA, não por estimativa — o cron tenta sempre a Twelve Data com a
+  // rotação 1 → 2 → 3; quando a API devolve erro/limite numa chave, passa para a
+  // próxima; só se TODAS falharem é que entra o Finnhub. Assim, uma manutenção
+  // do cron ou um dia mais curto NÃO "queima" a cota por estimativa.
   const counts = {
     forex: assets.filter((a) => a.type !== "stock").length,
     stock: assets.filter((a) => a.type === "stock").length,
   };
   const tickMin = Math.max(1, Math.round((Number(process.env.CRON_INTERVAL ?? 120) || 120) / 60));
   const td = tdPlan(now, counts, tickMin);
+  // cadência opcional: TWELVEDATA_POLL_MIN=2 (padrão, todos a cada tick) ou
+  // maior (ex.: 6) p/ economizar cota — os ativos são divididos em grupos.
+  const pollMin = Math.max(2, Math.round(Number(process.env.TWELVEDATA_POLL_MIN ?? 2) || 2));
+  const pollGroups = Math.max(1, Math.round(pollMin / 2));
 
   // Resolução de sinais/paper expirados roda SEMPRE (não consome cota de dados):
   // um trade que venceu fora da janela resolve no próximo tick, mesmo sábado.
@@ -128,14 +134,15 @@ export async function POST(req: Request) {
     errors: [] as string[],
     windows: { forex: forexOpen, stock: stockOpen },
     quota: {
-      provider: td.exhausted ? "finnhub-only" : "twelvedata",
+      provider: "twelvedata", // atualizado ao final conforme o que rodou de fato
       tdBudget: td.totalBudget,
       tdUsed: td.usedToday,
       tdKeys: td.keyCount,
       tdActiveKey: td.activeKey, // 0-based — null quando todas esgotadas
-      fallbackFinnhub: td.exhausted,
+      fallbackFinnhub: false,
     },
   };
+  let tdUsedThisTick = false;
 
   for (const asset of assets) {
     try {
@@ -143,19 +150,24 @@ export async function POST(req: Request) {
       const isStock = asset.type === "stock";
       if (isStock ? !stockOpen : !forexOpen) continue;
 
-      // ---- 3) fetch + upsert 1m/5m/15m ----
+      // ---- 3) cadência opcional (TWELVEDATA_POLL_MIN > 2): só busca o ativo
+      // quando for a vez do grupo dele (cada ativo a cada pollMin minutos).
+      if (pollGroups > 1) {
+        const canonicalIdx = Math.max(0, ACTIVE_SYMBOLS.indexOf(asset.symbol as string));
+        const slot = Math.floor(now.getTime() / 120_000);
+        if (canonicalIdx % pollGroups !== slot % pollGroups) continue;
+      }
+
+      // ---- 4) fetch + upsert 1m/5m/15m ----
       // Histórico profundo: o motor exige >= 60 candles 5m (300 de 1m).
       // Com ~2000 de 1m temos ~400 de 5m e ~133 de 15m (lookback real).
-      // Provedor: Twelve Data (chave ativa → rotaciona 1→2→3 ao esgotar) e,
-      // esgotadas todas (ou erro), cai no Finnhub no mesmo tick.
+      // Provedor: Twelve Data SEMPRE primeiro (rotação real 1→2→3 pela resposta
+      // da API — não por estimativa); se todas as chaves falharem, Finnhub.
       let candles1m: Candle[] | null = null;
-      if (td.exhausted) {
-        candles1m = await fetchCandlesFinnhub(asset.symbol as string, "1", 2000);
-      } else {
-        const r = await fetchTwelveDataRotated(asset.symbol as string, "1min", 2000, td.activeKey ?? 0);
-        candles1m = r.candles;
-        if (!candles1m) candles1m = await fetchCandlesFinnhub(asset.symbol as string, "1", 2000);
-      }
+      const r = await fetchTwelveDataRotated(asset.symbol as string, "1min", 2000, 0);
+      candles1m = r.candles;
+      if (r.keyIndex >= 0) tdUsedThisTick = true;
+      if (!candles1m) candles1m = await fetchCandlesFinnhub(asset.symbol as string, "1", 2000);
       if (!candles1m || candles1m.length < 10) {
         summary.errors.push(`${asset.symbol}: sem dados (provedor sem chave ou offline)`);
         continue;
@@ -324,6 +336,10 @@ export async function POST(req: Request) {
       summary.errors.push(`${asset.symbol}: ${String(e).slice(0, 120)}`);
     }
   }
+
+  // ---- 10b) provider real usado neste tick (para o resumo) ----
+  summary.quota.provider = tdUsedThisTick ? "twelvedata" : "finnhub-only";
+  summary.quota.fallbackFinnhub = !tdUsedThisTick;
 
   // ---- 11) countdown ao vivo: edita as mensagens de alerta pendentes a cada
   // tick, mostrando o tempo que falta p/ o sinal expirar (e o aviso final). ----
