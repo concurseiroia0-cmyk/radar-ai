@@ -9,6 +9,7 @@ import { resolveExpired } from "@/lib/services/paperResolution";
 import { marketOpen, creditsEstimateToday } from "@/lib/schedule";
 import { ACTIVE_SYMBOLS } from "@/lib/assets";
 import { fetchColdCheck } from "@/lib/signalMemory";
+import { refreshTelegramCountdowns } from "@/lib/services/telegramLive";
 
 /**
  * CRON — heartbeat do sistema (chamar via cron-job.org a cada 2 min).
@@ -116,6 +117,7 @@ export async function POST(req: Request) {
     alertsSent: 0,
     paperResolved: paperResolvedGlobal,
     memorySuppressed: [] as string[],
+    telegramLive: { edited: 0, expired: 0, failed: 0 },
     errors: [] as string[],
     windows: { forex: forexOpen, stock: stockOpen },
     quota: {
@@ -275,11 +277,28 @@ export async function POST(req: Request) {
           createdAt: new Date(),
         });
         const sent = await sendTelegramMessage(text);
-        if (sent.ok) summary.alertsSent++;
+        if (sent.ok && sent.messageId) {
+          summary.alertsSent++;
+          // guarda o message_id + texto p/ o countdown ao vivo (edição no próximo tick)
+          await supabase
+            .from("signals")
+            .update({
+              ai_consensus: { ...(consensus as object), tg: { messageId: sent.messageId, text, lastLeft: 300 } },
+            })
+            .eq("id", sig.id);
+        }
       }
     } catch (e) {
       summary.errors.push(`${asset.symbol}: ${String(e).slice(0, 120)}`);
     }
+  }
+
+  // ---- 11) countdown ao vivo: edita as mensagens de alerta pendentes a cada
+  // tick, mostrando o tempo que falta p/ o sinal expirar (e o aviso final). ----
+  try {
+    summary.telegramLive = await refreshTelegramCountdowns(supabase);
+  } catch {
+    summary.telegramLive = { edited: 0, expired: 0, failed: 0 };
   }
 
   return NextResponse.json(summary);

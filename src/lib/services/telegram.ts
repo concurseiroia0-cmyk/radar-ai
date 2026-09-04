@@ -20,7 +20,7 @@ export function getTelegramConfig(): TelegramConfig {
 export async function sendTelegramMessage(
   text: string,
   cfg: TelegramConfig = getTelegramConfig()
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; messageId?: number; error?: string }> {
   if (!cfg.botToken || !cfg.chatId) {
     return { ok: false, error: "Telegram não configurado (TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID)" };
   }
@@ -30,6 +30,42 @@ export async function sendTelegramMessage(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         chat_id: cfg.chatId,
+        text,
+        parse_mode: "Markdown",
+        disable_web_page_preview: true,
+      }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    const json = (await res.json()) as {
+      ok?: boolean;
+      description?: string;
+      result?: { message_id?: number };
+    };
+    return json.ok
+      ? { ok: true, messageId: json.result?.message_id }
+      : { ok: false, error: json.description ?? "Erro desconhecido do Telegram" };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}
+
+/** Edita uma mensagem já enviada (usado p/ atualizar o countdown ao vivo). */
+export async function editTelegramMessage(
+  chatId: string,
+  messageId: number,
+  text: string,
+  cfg: TelegramConfig = getTelegramConfig()
+): Promise<{ ok: boolean; error?: string }> {
+  if (!cfg.botToken || !cfg.chatId) {
+    return { ok: false, error: "Telegram não configurado (TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID)" };
+  }
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${cfg.botToken}/editMessageText`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        message_id: messageId,
         text,
         parse_mode: "Markdown",
         disable_web_page_preview: true,
