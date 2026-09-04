@@ -232,7 +232,6 @@ export function marketSession(type: MarketType | "all" = "all", now: Date = new 
 /**
  * Minutos JÁ transcorridos hoje (dia UTC — reset da cota do provedor) em que o
  * mercado do tipo está/esteve aberto — usado na estimativa de cota da API.
- * Forex: contagem por minuto sobre a janela Brasília (matemática pura).
  */
 export function openMinutesElapsedToday(type: MarketType, now: Date = new Date()): number {
   const nowMin = Math.floor(now.getTime() / 60_000);
@@ -251,9 +250,24 @@ export function openMinutesElapsedToday(type: MarketType, now: Date = new Date()
 }
 
 /**
- * Estimativa conceitual de créditos de dados gastos hoje
- * (1 requisição por ativo a cada `intervalMin` dentro da janela do próprio tipo).
- * Twelve Data free: 800 créditos/dia — usado no Topbar e em /api/quota.
+ * Minutos TOTAIS de hoje (dia UTC inteiro, passado + futuro) em que o mercado
+ * do tipo fica aberto — usado para escolher a cadência sustentável do dia.
+ */
+export function totalOpenMinutesToday(type: MarketType, now: Date = new Date()): number {
+  const dayStartMs = Math.floor(now.getTime() / 86_400_000) * 86_400_000;
+  const endMs = dayStartMs + 86_400_000;
+  let total = 0;
+  for (let t = dayStartMs; t < endMs; t += 60_000) {
+    if (marketOpen(type, new Date(t))) total++;
+  }
+  return total;
+}
+
+/**
+ * Estimativa conceitual de créditos de dados gastos hoje — 1 requisição por
+ * ativo a cada `intervalMin` dentro da janela do próprio tipo, no eixo do dia
+ * UTC (mesma base do reset de cota da Twelve Data). SEM teto fixo: o teto é
+ * aplicado por quem consome (multi-chave Twelve Data).
  */
 export function creditsEstimateToday(
   now: Date = new Date(),
@@ -262,5 +276,5 @@ export function creditsEstimateToday(
 ): number {
   const f = Math.floor(openMinutesElapsedToday("forex", now) / intervalMin) * counts.forex;
   const s = Math.floor(openMinutesElapsedToday("stock", now) / intervalMin) * counts.stock;
-  return Math.min(800, f + s);
+  return f + s;
 }

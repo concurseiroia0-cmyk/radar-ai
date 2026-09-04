@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { format } from "date-fns";
-import { ArrowUpRight, Bot } from "lucide-react";
+import { ArrowUpRight, Bot, Send } from "lucide-react";
 import type { DemoSignal } from "@/lib/demo-data";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -99,6 +99,7 @@ export default function SinaisClient({ signals, symbols, demo }: SinaisClientPro
               <TableHead className="text-right">Score</TableHead>
               <TableHead>Estratégia</TableHead>
               <TableHead>IA</TableHead>
+              {!demo && <TableHead>Telegram</TableHead>}
               <TableHead>Resultado</TableHead>
               <TableHead className="text-right">Ações</TableHead>
             </TableRow>
@@ -130,6 +131,24 @@ export default function SinaisClient({ signals, symbols, demo }: SinaisClientPro
                       {s.aiPass ? s.aiConsensusLabel : "—"}
                     </span>
                   </TableCell>
+                  {!demo && (
+                    <TableCell>
+                      {!s.tg ? (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      ) : s.tg.ok ? (
+                        <span className="flex items-center gap-1 text-xs text-call">
+                          <Send className="size-3" /> enviado
+                        </span>
+                      ) : (
+                        <span
+                          className="flex items-center gap-1 text-xs text-put"
+                          title={s.tg.error ?? "falha ao enviar"}
+                        >
+                          <Send className="size-3" /> falhou
+                        </span>
+                      )}
+                    </TableCell>
+                  )}
                   <TableCell>
                     <Badge className={rm.cls}>{rm.label}</Badge>
                   </TableCell>
@@ -143,7 +162,7 @@ export default function SinaisClient({ signals, symbols, demo }: SinaisClientPro
             })}
             {!filtered.length && (
               <TableRow>
-                <TableCell colSpan={9} className="py-8 text-center text-muted-foreground">
+                <TableCell colSpan={demo ? 9 : 10} className="py-8 text-center text-muted-foreground">
                   Nenhum sinal encontrado com os filtros atuais.
                 </TableCell>
               </TableRow>

@@ -26,7 +26,9 @@ export async function demoProfile(): Promise<ProfileData> {
     ativos_ativos: [...ACTIVE_SYMBOLS],
     telegram_configured: Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID),
     apis: {
-      twelvedata: Boolean(process.env.TWELVEDATA_KEY),
+      twelvedata: Boolean(
+        process.env.TWELVEDATA_KEY || process.env.TWELVEDATA_KEY2 || process.env.TWELVEDATA_KEY3
+      ),
       finnhub: Boolean(process.env.FINNHUB_KEY),
       openrouter: Boolean(process.env.OPENROUTER_KEY),
       nvidia: Boolean(process.env.NVIDIA_KEY),
@@ -60,7 +62,9 @@ export async function getProfile(): Promise<ProfileData | null> {
     ativos_ativos: Array.isArray(data.ativos_ativos) ? data.ativos_ativos : [],
     telegram_configured: Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID),
     apis: {
-      twelvedata: Boolean(process.env.TWELVEDATA_KEY),
+      twelvedata: Boolean(
+        process.env.TWELVEDATA_KEY || process.env.TWELVEDATA_KEY2 || process.env.TWELVEDATA_KEY3
+      ),
       finnhub: Boolean(process.env.FINNHUB_KEY),
       openrouter: Boolean(process.env.OPENROUTER_KEY),
       nvidia: Boolean(process.env.NVIDIA_KEY),

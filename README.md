@@ -63,11 +63,11 @@ Sem `NEXT_PUBLIC_SUPABASE_URL` o app roda em **modo demonstração**: dados sint
 |---|---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` / `ANON_KEY` | sim | Supabase (sem elas → demo mode) |
 | `SUPABASE_SERVICE_KEY` | produção | escrita server-side (cron, backtest) — sem ela cron/backtest não gravam |
-| `TWELVEDATA_KEY` / `FINNHUB_KEY` | produção | candles 1m (TD primário até o teto do dia → Finnhub) |
-| `TWELVEDATA_DAILY_BUDGET` | — | teto diário de créditos Twelve Data (default 790) — depois segue só Finnhub |
+| `TWELVEDATA_KEY` / `_KEY2` / `_KEY3`… | produção | candles 1m — multi-chave (800/dia cada): chave 1 até o teto → 2 → 3 → só então Finnhub; cadência automática p/ o dia caber |
+| `FINNHUB_KEY` | produção | fallback quando as chaves Twelve Data esgotam (não para os sinais) |
 | `SIGNAL_MEMORY_*` | — | memória de estratégias (amostras/acerto mínimos p/ segurar combo frio) — ver .env.example |
-| `OPENROUTER_KEY` | alertas IA | consenso multi-modelo |
-| `TELEGRAM_BOT_TOKEN` / `CHAT_ID` | alertas | envio após consenso válido |
+| `OPENROUTER_KEY` | alertas IA | consenso multi-modelo (enriquece o alerta quando presente) |
+| `TELEGRAM_BOT_TOKEN` / `CHAT_ID` | alertas | envio de TODO sinal técnico (consenso opcional via `TG_REQUIRE_CONSENSUS`) |
 | `CRON_SECRET` | produção | protege `/api/cron` |
 | janela de mercado | — | fixa no código (`src/lib/schedule.ts`): IQ Option em horário de Brasília (UTC−3) p/ forex + NYSE p/ ações |
 

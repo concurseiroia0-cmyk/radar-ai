@@ -9,7 +9,16 @@ import { useRouter } from "next/navigation";
 interface TopbarProps {
   email?: string | null;
   demo: boolean;
-  quota?: { date: string; used: number; remaining: number; budget?: number; source: string };
+  quota?: {
+    date: string;
+    used: number;
+    remaining: number;
+    budget?: number;
+    source: string;
+    keys?: number;
+    activeKey?: number | null;
+    intervalMin?: number;
+  };
 }
 
 function formatUtc(d: Date): string {
@@ -44,9 +53,12 @@ export default function Topbar({ email, demo, quota }: TopbarProps) {
         {quota && (
           <span
             className="hidden text-xs text-muted-foreground sm:inline"
-            title="Twelve Data free: 800 créditos/dia. Ao atingir o teto o radar segue no fallback Finnhub (sem parar)."
+            title={`Twelve Data: ${quota.keys ?? 0} chave(s) × 800 créditos/dia. O cron usa a chave 1 até o teto, depois 2, depois 3; cadência de ${quota.intervalMin ?? "—"} min por ativo. Esgotadas → fallback Finnhub (sem parar).`}
           >
             • cota TD {quota.used}/{quota.budget ?? quota.remaining}
+            {quota.source === "twelvedata" && quota.activeKey != null && (
+              <span className="text-call"> · chave {quota.activeKey + 1}/{quota.keys}</span>
+            )}
             {quota.source === "finnhub" && <span className="text-warn"> · fallback Finnhub ativo</span>}
           </span>
         )}

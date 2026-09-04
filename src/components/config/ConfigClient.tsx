@@ -249,8 +249,12 @@ export default function ConfigClient({ initial, demo }: ConfigClientProps) {
                 <Input
                   value={profile.telegram_chat_id}
                   onChange={(e) => setProfile({ ...profile, telegram_chat_id: e.target.value })}
-                  placeholder="-1001234567890"
+                  placeholder="123456789"
                 />
+                <p className="text-xs text-muted-foreground">
+                  Seu chat id (veja com @userinfobot). Usado pelo cron quando o servidor não tem
+                  TELEGRAM_CHAT_ID — o token sempre vem do env TELEGRAM_BOT_TOKEN.
+                </p>
               </div>
             </div>
             <div className="flex gap-2">

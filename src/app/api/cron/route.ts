@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { aggregateTo5m, aggregateTo15m, runEngine, buildIndicatorPack } from "@/lib/engine";
-import { fetchCandles, fetchCandlesFinnhub, twelveDataDailyBudget } from "@/lib/services/marketData";
+import { aggregateTo5m, aggregateTo15m, runEngine, buildIndicatorPack, type Candle } from "@/lib/engine";
+import { fetchCandlesFinnhub, fetchTwelveDataRotated, tdPlan, tdSlotMatches } from "@/lib/services/marketData";
 import { createServiceSupabaseClient, isSupabaseConfigured } from "@/lib/services/supabase-server";
 import { buildPayload } from "@/lib/ai/payload";
 import { runConsensus, aiAvailable } from "@/lib/ai/consensus";
 import { formatAlert, sendTelegramMessage } from "@/lib/services/telegram";
 import { resolveExpired } from "@/lib/services/paperResolution";
-import { marketOpen, creditsEstimateToday } from "@/lib/schedule";
+import { marketOpen } from "@/lib/schedule";
 import { ACTIVE_SYMBOLS } from "@/lib/assets";
 import { fetchColdCheck } from "@/lib/signalMemory";
 import { refreshTelegramCountdowns } from "@/lib/services/telegramLive";
@@ -20,16 +20,17 @@ import { refreshTelegramCountdowns } from "@/lib/services/telegramLive";
  *  2. janela de mercado por tipo (src/lib/schedule.ts): forex segue os
  *     horários da IQ Option EM HORÁRIO DE BRASÍLIA (UTC−3); ações dos EUA seguem o pregão da NYSE.
  *     Fora da janela NÃO busca candles (economiza cota da API).
- *  3. buscar últimos candles 1m por ativo ATIVO e aberto (Twelve Data → Finnhub)
- *  4. upsert candles (asset_id, '1m', ts) — sem duplicados
- *  5. agregar 1m -> 5m e 1m -> 15m (só blocos completos)
- *  6. gatilho: SÓ processa quando um candle 5m FOI FECHADO (cron_state)
- *  7. runEngine por ativo com 5m recém-fechado
- *  8. se valid AND score >= score_minimo → grava signals (pending)
- *  9. IA + consenso (se chave configurada) → ai_consensus/ai_pass + ai_analyses
- * 10. consenso válido → alerta Telegram
- * 11. resolver sinais/paper_trades expirados (roda SEMPRE — não usa cota)
- * 12. try/catch por ativo (um falha não quebra os outros)
+ *  3. buscar candles 1m por ativo ATIVO e aberto — Twelve Data multi-chave
+ *     (1 → 2 → 3, cadência por ativo que caiba no dia) ou Finnhub se esgotar
+ *  4. upsert candles (asset_id, timeframe, ts) 1m/5m/15m — sem duplicados
+ *  5. gatilho: SÓ processa quando um candle 5m FOI FECHADO (cron_state)
+ *  6. runEngine por ativo com 5m recém-fechado
+ *  7. se valid AND score >= score_minimo → grava signals (pending)
+ *  8. IA + consenso (se chave configurada) → ai_consensus/ai_pass + ai_analyses
+ *  9. alerta Telegram para TODO sinal técnico (consenso enriquece a msg;
+ *     TG_REQUIRE_CONSENSUS=1 restaura o modo estrito) + countdown ao vivo
+ * 10. resolver sinais/paper_trades expirados (roda SEMPRE — não usa cota)
+ * 11. try/catch por ativo (um falha não quebra os outros)
  */
 
 /** Lista padrão quando o perfil ainda não tem ativos (mesma da Config/seed). */
@@ -61,10 +62,18 @@ export async function POST(req: Request) {
   }
 
   // ---- 1) configurações ----
-  const { data: profRows } = await supabase.from("profiles").select("score_minimo, ativos_ativos").limit(1);
-  const prof = (profRows ?? [])[0] as { score_minimo?: number; ativos_ativos?: string[] } | undefined;
+  const { data: profRows } = await supabase
+    .from("profiles")
+    .select("score_minimo, ativos_ativos, telegram_chat_id")
+    .limit(1);
+  const prof = (profRows ?? [])[0] as
+    | { score_minimo?: number; ativos_ativos?: string[]; telegram_chat_id?: string | null }
+    | undefined;
   const scoreMin = Number(prof?.score_minimo ?? process.env.DEFAULT_SCORE_MIN ?? 75);
   const ativos = prof?.ativos_ativos?.length ? prof.ativos_ativos : DEFAULT_ATIVOS;
+  // destino do alerta: Chat ID salvo na Config (perfil) tem prioridade; senão o env.
+  const tgChatId = prof?.telegram_chat_id?.trim() || process.env.TELEGRAM_CHAT_ID || undefined;
+  const tgCfg = { botToken: process.env.TELEGRAM_BOT_TOKEN || undefined, chatId: tgChatId };
   // atenção à cota do provedor: N ativos × chamadas por dia ≤ cota gratuita —
   // as janelas abaixo já eliminam as chamadas fora do horário de mercado.
 
@@ -77,17 +86,13 @@ export async function POST(req: Request) {
   const { data: assetRows } = await supabase.from("assets").select("id, symbol, type").eq("active", true);
   const assets = (assetRows ?? []).filter((a) => ativos.includes(a.symbol));
 
-  // ---- cota Twelve Data: usa TD até o teto diário e depois segue SÓ Finnhub
-  // (mesmo ritmo, sem estourar a meta). Estimativa determinística a partir do
-  // relógio/janela — igual ao medidor exibido no topo da página.
-  const tdBudget = twelveDataDailyBudget();
-  const tickMin = Math.max(1, Math.round((Number(process.env.CRON_INTERVAL ?? 120) || 120) / 60));
+  // ---- plano Twelve Data do dia: cadência sustentável (intervalo por ativo
+  // que caiba na soma das 3 chaves × 800) + rotação de chaves (1 → 2 → 3).
   const counts = {
     forex: assets.filter((a) => a.type !== "stock").length,
     stock: assets.filter((a) => a.type === "stock").length,
   };
-  const tdEstimateUsed = creditsEstimateToday(now, counts, tickMin);
-  const useTwelveData = tdEstimateUsed < tdBudget;
+  const td = tdPlan(now, counts);
 
   // Resolução de sinais/paper expirados roda SEMPRE (não consome cota de dados):
   // um trade que venceu fora da janela resolve no próximo tick, mesmo sábado.
@@ -121,10 +126,13 @@ export async function POST(req: Request) {
     errors: [] as string[],
     windows: { forex: forexOpen, stock: stockOpen },
     quota: {
-      provider: useTwelveData ? "twelvedata" : "finnhub-only",
-      tdBudget,
-      tdEstimateUsed,
-      fallbackFinnhub: !useTwelveData,
+      provider: td.exhausted ? "finnhub-only" : "twelvedata",
+      tdBudget: td.totalBudget,
+      tdUsed: td.usedToday,
+      tdKeys: td.keyCount,
+      tdActiveKey: td.activeKey, // 0-based — null quando todas esgotadas
+      tdIntervalMin: td.intervalMin,
+      fallbackFinnhub: td.exhausted,
     },
   };
 
@@ -134,13 +142,25 @@ export async function POST(req: Request) {
       const isStock = asset.type === "stock";
       if (isStock ? !stockOpen : !forexOpen) continue;
 
-      // ---- 3/4) fetch + upsert 1m/5m/15m ----
+      // ---- 3) cadência sustentável: em modo Twelve Data cada ativo é buscado
+      // a cada td.intervalMin (grupos sobre ticks de 2 min). Fora da vez, pula
+      // este tick — o cron_state evita reprocessar quando voltar.
+      const canonicalIdx = Math.max(0, ACTIVE_SYMBOLS.indexOf(asset.symbol as string));
+      if (!td.exhausted && !tdSlotMatches(now, canonicalIdx, td.intervalMin)) continue;
+
+      // ---- 4) fetch + upsert 1m/5m/15m ----
       // Histórico profundo: o motor exige >= 60 candles 5m (300 de 1m).
       // Com ~2000 de 1m temos ~400 de 5m e ~133 de 15m (lookback real).
-      // Provedor: Twelve Data enquanto houver cota do dia; depois, Finnhub direto.
-      const candles1m = useTwelveData
-        ? await fetchCandles(asset.symbol as string, 2000)
-        : await fetchCandlesFinnhub(asset.symbol, "1", 2000);
+      // Provedor: Twelve Data (chave ativa → rotaciona 1→2→3 ao esgotar) e,
+      // esgotadas todas (ou erro), cai no Finnhub no mesmo tick.
+      let candles1m: Candle[] | null = null;
+      if (td.exhausted) {
+        candles1m = await fetchCandlesFinnhub(asset.symbol as string, "1", 2000);
+      } else {
+        const r = await fetchTwelveDataRotated(asset.symbol as string, "1min", 2000, td.activeKey ?? 0);
+        candles1m = r.candles;
+        if (!candles1m) candles1m = await fetchCandlesFinnhub(asset.symbol as string, "1", 2000);
+      }
       if (!candles1m || candles1m.length < 10) {
         summary.errors.push(`${asset.symbol}: sem dados (provedor sem chave ou offline)`);
         continue;
@@ -260,8 +280,11 @@ export async function POST(req: Request) {
         }
       }
 
-      // ---- 10) alerta Telegram (apenas consenso válido) ----
-      if (consensus?.passed) {
+      // ---- 10) alerta Telegram — TODO sinal técnico válido vira alerta.
+      // (Antes só enviava com consenso IA aprovado; o consenso agora apenas
+      // enriquece a mensagem. TG_REQUIRE_CONSENSUS=1 restaura o modo estrito.)
+      const consensusRequired = (process.env.TG_REQUIRE_CONSENSUS ?? "0") === "1";
+      if (!consensusRequired || consensus?.passed) {
         const passedConfluences = engine.confluences.filter((c) => c.passed).length;
         const text = formatAlert({
           symbol: asset.symbol as string,
@@ -276,17 +299,19 @@ export async function POST(req: Request) {
           entryPrice: engine.entryPrice,
           createdAt: new Date(),
         });
-        const sent = await sendTelegramMessage(text);
-        if (sent.ok && sent.messageId) {
-          summary.alertsSent++;
-          // guarda o message_id + texto p/ o countdown ao vivo (edição no próximo tick)
-          await supabase
-            .from("signals")
-            .update({
-              ai_consensus: { ...(consensus as object), tg: { messageId: sent.messageId, text, lastLeft: 300 } },
-            })
-            .eq("id", sig.id);
-        }
+        const sent = await sendTelegramMessage(text, tgCfg);
+        // guarda o resultado do envio no próprio sinal (message_id p/ o
+        // countdown ao vivo; error p/ diagnóstico na página Sinais)
+        const tgMeta =
+          sent.ok && sent.messageId
+            ? { messageId: sent.messageId, text, lastLeft: 300 }
+            : { error: sent.error ?? "falha ao enviar mensagem" };
+        await supabase
+          .from("signals")
+          .update({ ai_consensus: { ...(consensus ?? ({} as object)), tg: tgMeta } })
+          .eq("id", sig.id);
+        if (sent.ok && sent.messageId) summary.alertsSent++;
+        else summary.errors.push(`${asset.symbol}: alerta Telegram falhou — ${tgMeta.error}`);
       }
     } catch (e) {
       summary.errors.push(`${asset.symbol}: ${String(e).slice(0, 120)}`);
@@ -296,7 +321,7 @@ export async function POST(req: Request) {
   // ---- 11) countdown ao vivo: edita as mensagens de alerta pendentes a cada
   // tick, mostrando o tempo que falta p/ o sinal expirar (e o aviso final). ----
   try {
-    summary.telegramLive = await refreshTelegramCountdowns(supabase);
+    summary.telegramLive = await refreshTelegramCountdowns(supabase, Date.now(), tgCfg);
   } catch {
     summary.telegramLive = { edited: 0, expired: 0, failed: 0 };
   }

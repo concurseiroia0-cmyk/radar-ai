@@ -10,7 +10,7 @@
  * Não cria tabela nova: os metadados vivem no ai_consensus do sinal.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { getTelegramConfig, editTelegramMessage, fmtBrClock } from "./telegram";
+import { getTelegramConfig, editTelegramMessage, fmtBrClock, type TelegramConfig } from "./telegram";
 import { TF_DURATION_SECONDS } from "@/lib/paper";
 
 interface TgMeta {
@@ -76,14 +76,15 @@ export interface LiveRefreshResult {
  * Varre os sinais pendentes recentes que já têm alerta enviado e atualiza o
  * countdown na mensagem. Chamado pelo cron em cada tick (a cada ~2 min) —
  * edita apenas quando o tempo restante caiu o suficiente (ou zerou).
+ * `cfg` opcional: o cron repassa o destino resolvido (perfil > env).
  */
 export async function refreshTelegramCountdowns(
   supabase: SupabaseClient,
-  now: number = Date.now()
+  now: number = Date.now(),
+  cfg: TelegramConfig = getTelegramConfig()
 ): Promise<LiveRefreshResult> {
   const res: LiveRefreshResult = { edited: 0, expired: 0, failed: 0 };
-  const cfg = getTelegramConfig();
-  if (!cfg.botToken || !cfg.chatId || !cfg.chatId) return res;
+  if (!cfg.botToken || !cfg.chatId) return res;
 
   const { data: rows } = await supabase
     .from("signals")
@@ -107,7 +108,7 @@ export async function refreshTelegramCountdowns(
 
       const final = remaining <= 0;
       const newText = patchAlertStatus(tg.text, remaining, deadlineSec);
-      const sent = await editTelegramMessage(cfg.chatId, tg.messageId, newText);
+      const sent = await editTelegramMessage(cfg.chatId, tg.messageId, newText, cfg);
       if (!sent.ok) {
         res.failed++;
         continue;

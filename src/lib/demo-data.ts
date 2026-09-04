@@ -42,7 +42,7 @@ const BASE_PRICE: Record<string, number> = {
   "USD/CHF": 0.855,
   "AUD/JPY": 96.5,
   "USD/CAD": 1.365,
-  "XAU/USD": 2350,
+  "NZD/USD": 0.6142,
   AAPL: 228.5,
   TSLA: 246,
   NVDA: 128,
@@ -140,6 +140,8 @@ export interface DemoSignal {
   aiPass: boolean;
   aiConsensusLabel: string;
   invalidReasons: string[];
+  /** Status do envio do alerta Telegram (preenchido apenas no modo real). */
+  tg?: { ok: boolean; error?: string };
 }
 
 /** Varre as últimas ~N janelas com o motor real e coleta sinais válidos. */

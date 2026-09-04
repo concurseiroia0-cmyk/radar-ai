@@ -118,9 +118,11 @@ export function formatAlert(o: AlertOptions): string {
       ? `Suporte: ${o.ind.support.length ? "Confirmado" : "—"}`
       : `Resistência: ${o.ind.resistance.length ? "Confirmado" : "—"}`;
   const pullbackLine = `Pullback: ${o.strategy.includes("Pullback") || o.strategy === "Confluência" ? "Confirmado" : "—"}`;
-  const consenso = o.consensus
-    ? `Consenso IA: *${o.consensus.favoravel} favorável* ✅`
-    : "Consenso IA: —";
+  const consenso = !o.consensus
+    ? "Consenso IA: —"
+    : o.consensus.passed
+      ? `Consenso IA: *${o.consensus.favoravel} favorável* ✅`
+      : `Consenso IA: *${o.consensus.favoravel} favorável* ⚠️ (não aprovou)`;
   const modelos = o.consensus
     ? `Modelos OK: *${o.consensus.modelos.filter((m) => m.status === "ok").length}/${o.consensus.totalModels}*`
     : "";
@@ -150,7 +152,11 @@ export function formatAlert(o: AlertOptions): string {
         ]
       : []),
     "",
-    `*Validado: Técnico + Consenso IA*`,
+    !o.consensus
+      ? `*Validado: Técnico* (consenso IA não consultado — sem chave de IA configurada)`
+      : o.consensus.passed
+        ? `*Validado: Técnico + Consenso IA*`
+        : `*Validado: Técnico* (consenso IA não aprovou — atenção)`,
     "",
     `Preço de entrada: ${o.entryPrice.toFixed(5)}`,
   ].join("\n");

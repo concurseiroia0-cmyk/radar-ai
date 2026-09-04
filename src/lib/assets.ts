@@ -25,7 +25,7 @@ export const RADAR_ASSETS: RadarAsset[] = [
   { symbol: "USD/CHF", type: "forex" },
   { symbol: "AUD/JPY", type: "forex" },
   { symbol: "USD/CAD", type: "forex" },
-  { symbol: "XAU/USD", type: "forex" },
+  { symbol: "NZD/USD", type: "forex" },
   // ações EUA
   { symbol: "AAPL", type: "stock" },
   { symbol: "TSLA", type: "stock" },

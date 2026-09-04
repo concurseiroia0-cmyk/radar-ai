@@ -19,6 +19,13 @@ import type { BacktestRunResult } from "@/lib/backtest/runner";
  * banco diretamente.
  */
 
+/** Status do Telegram gravado no ai_consensus de cada sinal real. */
+function tgFrom(row: { ai_consensus?: unknown }): { ok: boolean; error?: string } | undefined {
+  const tg = (row.ai_consensus as { tg?: { messageId?: number; error?: string } } | undefined)?.tg;
+  if (!tg) return undefined;
+  return tg.error ? { ok: false, error: tg.error } : { ok: true };
+}
+
 export interface RadarPageData {
   demo: boolean;
   snapshots: DemoAssetSnapshot[];
@@ -89,6 +96,7 @@ export async function getRadarData(): Promise<RadarPageData> {
       ? `${String((r.ai_consensus as { favoravel?: string }).favoravel)} ✓`
       : "—",
     invalidReasons: [],
+    tg: tgFrom(r),
   }));
   return { demo: false, snapshots, signals };
 }
@@ -170,6 +178,7 @@ export async function getAssetPageData(symbol: string): Promise<AssetPageData | 
       ? `${String((r.ai_consensus as { favoravel?: string }).favoravel)} ✓`
       : "—",
     invalidReasons: [],
+    tg: tgFrom(r),
   }));
   return { demo: false, symbol, candles, pack, signals, engine };
 }
@@ -206,6 +215,7 @@ export async function getSinaisPageData(): Promise<{ demo: boolean; signals: Dem
       ? `${String((r.ai_consensus as { favoravel?: string }).favoravel)} ✓`
       : "—",
     invalidReasons: [],
+    tg: tgFrom(r),
   }));
   return { demo: false, signals };
 }

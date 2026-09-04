@@ -2,14 +2,22 @@ import { redirect } from "next/navigation";
 import Sidebar from "@/components/app/Sidebar";
 import Topbar from "@/components/app/Topbar";
 import { createServerSupabaseClient, isSupabaseConfigured } from "@/lib/services/supabase-server";
-import { creditsEstimateToday } from "@/lib/schedule";
-import { twelveDataDailyBudget } from "@/lib/services/marketData";
+import { tdPlan } from "@/lib/services/marketData";
 import { getProfile } from "@/lib/actions/profile";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const demo = !isSupabaseConfigured();
   let email: string | null = null;
-  let quota: { date: string; used: number; remaining: number; budget?: number; source: string } | undefined;
+  let quota: {
+    date: string;
+    used: number;
+    remaining: number;
+    budget?: number;
+    source: string;
+    keys?: number;
+    activeKey?: number | null;
+    intervalMin?: number;
+  } | undefined;
 
   if (!demo) {
     const supabase = await createServerSupabaseClient();
@@ -20,22 +28,24 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     if (!user) redirect("/login");
     email = user.email ?? null;
 
-    // cota Twelve Data (free: 800/dia): estima o consumo até agora com a mesma
-    // fórmula do cron; ao atingir o teto o radar segue no fallback Finnhub.
+    // cota Twelve Data multi-chave: mesma fórmula do cron (cadência por ativo
+    // que caiba na soma das chaves; chave 1 → 2 → 3; Finnhub se esgotar).
     const profile = await getProfile();
     const counts = { forex: 0, stock: 0 };
     for (const s of profile?.ativos_ativos ?? []) {
       if (s.includes("/")) counts.forex++;
       else counts.stock++;
     }
-    const budget = twelveDataDailyBudget();
-    const used = Math.min(budget, creditsEstimateToday(new Date(), counts));
+    const plan = tdPlan(new Date(), counts);
     quota = {
       date: new Date().toISOString().slice(0, 10),
-      used,
-      remaining: Math.max(0, budget - used),
-      budget,
-      source: used >= budget ? "finnhub" : "twelvedata",
+      used: plan.usedToday,
+      remaining: plan.remaining,
+      budget: plan.totalBudget,
+      source: plan.exhausted ? "finnhub" : "twelvedata",
+      keys: plan.keyCount,
+      activeKey: plan.activeKey,
+      intervalMin: plan.intervalMin,
     };
   }
 
